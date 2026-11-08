@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Jondo's background (BG = 0x0c0a09 in src/shared/theme.rs). -->
+    <color name="gpui_surface">#FF0C0A09</color>
+    <!-- Jota's launcher background (ACCENT = 0xff6dd6 in src/shared/theme.rs). -->
+    <color name="ic_launcher_background">#FFFF6DD6</color>
+</resources>

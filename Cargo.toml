@@ -1,0 +1,137 @@
+[package]
+name = "jondo"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "GPL-3.0-only"
+description = "A minimal, native music player for Spotify browsing and YouTube playback"
+
+[lib]
+name = "jondo"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "jondo"
+path = "src/main.rs"
+
+[dependencies]
+gpui-kit = "0.9"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4"
+directories = "6"
+url = "2"
+rand = "0.9"
+sha2 = "0.10"
+sha1 = "0.10"
+aes-gcm = "0.11"
+pbkdf2 = "0.12"
+base64 = "0.22"
+open = "5"
+image = { version = "0.25", default-features = false, features = [
+    "jpeg",
+    "png",
+    "webp",
+] }
+reqwest = { version = "0.12", default-features = false, features = [
+    "blocking",
+    "gzip",
+    "json",
+    "rustls-tls-native-roots",
+    "stream",
+] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
+tokio-tungstenite = { version = "0.28", features = ["rustls-tls-native-roots"] }
+futures-util = "0.3"
+
+librespot-core = { version = "0.8", default-features = false, features = [
+    "rustls-tls-native-roots",
+] }
+librespot-protocol = "0.8"
+protobuf = "3"
+
+symphonia = { version = "0.5", default-features = false, features = [
+    "aac",
+    "isomp4",
+    "opt-simd",
+] }
+cpal = "0.18"
+
+[target.'cfg(all(unix, not(target_os = "android")))'.dependencies]
+aes = "0.9"
+x11rb = "0.13"
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+[target.'cfg(all(target_os = "linux", target_env = "gnu"))'.dependencies]
+libc = "0.2"
+
+[target.'cfg(not(target_os = "android"))'.dependencies]
+rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "async-std"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+gpui-mobile = { package = "gpui-pre-mobile", path = "vendor/gpui-mobile", default-features = false, features = [
+    "path_provider",
+    "media_session",
+    "deeplink",
+    "clipboard",
+] }
+android_logger = "0.15"
+android-activity = { version = "0.6", features = ["native-activity"] }
+jni = "0.21"
+# gpui-mobile talks to the JVM through jni 0.22, and its helpers hand back values
+# of that version. The login hold goes through those helpers, so it needs the
+# same crate; the alias keeps 0.21 available for the rest of the app.
+jni22 = { package = "jni", version = "0.22" }
+ndk-context = "0.1"
+
+[patch.crates-io]
+gpui-component = { path = "vendor/gpui-component" }
+librespot-core = { path = "vendor/librespot-core" }
+
+[dev-dependencies]
+# The headless window, event dispatch and selector queries the UI tests drive
+# the app through. Test only: the shipped binary keeps the no-op selector path.
+gpui_pre = { version = "=0.3.11", package = "gpui-pre", features = ["test-support"] }
+
+[profile.dev]
+opt-level = 1
+# rustc 1.99 + rust-lld drops the anonymous hidden symbols the crate emits
+# while incremental compilation is on, so the binary never links.
+incremental = false
+# Line tables only: the debug library is otherwise a quarter of a gigabyte and
+# every install pays for it.
+debug = 1
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = true
+panic = "abort"
+# Size first: the UI is memory-bound, not compute-bound. Decoding is the one
+# hot loop and keeps full optimization below.
+opt-level = "z"
+
+[profile.release.package.symphonia-core]
+opt-level = 3
+
+[profile.release.package.symphonia-codec-aac]
+opt-level = 3
+
+[profile.release.package.symphonia-format-isomp4]
+opt-level = 3
+
+[profile.release.package.cpal]
+opt-level = 3
+
+# A release build without the fat-LTO cost, for smoke-testing the optimized
+# binary while iterating. Distribution keeps using `--release`.
+[profile.quick]
+inherits = "release"
+lto = "thin"
+codegen-units = 16
+strip = false
+
+[profile.dev.package."*"]
+opt-level = 2
+debug = false

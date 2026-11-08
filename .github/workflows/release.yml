@@ -1,0 +1,164 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_TARGET_DIR: ${{ github.workspace }}/target
+  JONDO_REPO: Jota-Music/jondo
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: System dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang cmake libclang-dev pkg-config \
+            libasound2-dev libfontconfig1-dev libwayland-dev \
+            libx11-dev libx11-xcb-dev libxcb1-dev libxcb-render0-dev \
+            libxcb-shape0-dev libxcb-xfixes0-dev libxcb-xkb-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev libvulkan-dev
+      - name: Version from tag
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          sed -i "s/^version = \".*\"/version = \"${version}\"/" Cargo.toml
+      - name: Build
+        run: cargo build --release
+      - name: Package AppImage
+        run: |
+          set -euo pipefail
+          arch="$(uname -m)"
+          appdir="AppDir"
+          rm -rf "$appdir" "jondo-${arch}.AppImage"
+          install -Dm755 target/release/jondo "$appdir/usr/bin/jondo"
+          install -Dm644 assets/icon.png "$appdir/usr/share/icons/hicolor/1024x1024/apps/jondo.png"
+          install -Dm644 assets/icon.png "$appdir/jondo.png"
+          ln -s jondo.png "$appdir/.DirIcon"
+          cat > "$appdir/jondo.desktop" <<'DESKTOP'
+          [Desktop Entry]
+          Type=Application
+          Name=Jondo
+          Exec=jondo
+          Icon=jondo
+          Categories=AudioVideo;Audio;Player;
+          Terminal=false
+          StartupNotify=false
+          StartupWMClass=jondo
+          DESKTOP
+          cat > "$appdir/AppRun" <<'APPRUN'
+          #!/bin/sh
+          here="$(dirname "$(readlink -f "$0")")"
+          exec "$here/usr/bin/jondo" "$@"
+          APPRUN
+          chmod +x "$appdir/AppRun"
+          curl -fsSL -o appimagetool \
+            "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${arch}.AppImage"
+          chmod +x appimagetool
+          ARCH="$arch" ./appimagetool --appimage-extract-and-run \
+            "$appdir" "jondo-${arch}.AppImage"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: jondo-*.AppImage
+          if-no-files-found: error
+
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android, x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+      - name: System dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang cmake libclang-dev pkg-config
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: |
+            platforms;android-35
+            build-tools;35.0.0
+            ndk;26.3.11579264
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+      - name: Version from tag
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          sed -i "s/^version = \".*\"/version = \"${version}\"/" Cargo.toml
+      - name: Decode keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 is not set"
+            exit 1
+          fi
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/jondo.keystore"
+      - name: Build APK
+        env:
+          ANDROID_KEYSTORE_FILE: ${{ runner.temp }}/jondo.keystore
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          ./android/build.sh --release
+          cp android/app/build/outputs/apk/release/app-release.apk jondo.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: jondo.apk
+          if-no-files-found: error
+
+  publish:
+    needs: [linux, android]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          path: release
+          merge-multiple: true
+      - name: Refuse to republish a version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --json name -q .name >/dev/null 2>&1; then
+            echo "::error::$GITHUB_REF_NAME already has a release. Bump the patch and tag again."
+            exit 1
+          fi
+      - name: Checksums
+        run: |
+          set -euo pipefail
+          cd release
+          sha256sum jondo.apk jondo-*.AppImage > SHA256SUMS
+          cat SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/jondo.apk
+            release/jondo-*.AppImage
+            release/SHA256SUMS
+          fail_on_unmatched_files: true
+          generate_release_notes: true

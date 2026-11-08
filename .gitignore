@@ -1,0 +1,19 @@
+/target
+*.log
+*.tmp
+.env
+.DS_Store
+
+# Android build output
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+
+# Android release signing
+android/keystore.properties
+*.jks
+*.keystore
+
+# Native libraries built by android/build.sh
+android/app/src/main/jniLibs/

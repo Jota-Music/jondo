@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The app's private files directory is the app data root path_provider returns:
+  logs, exported cookies, the downloaded APK and the backup staging all live
+  under it. Only the URIs the app grants are reachable, never the directory.
+-->
+<paths>
+    <files-path name="root" path="." />
+</paths>

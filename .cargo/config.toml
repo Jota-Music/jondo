@@ -1,0 +1,36 @@
+[build]
+# The checkout lives on NTFS (/mnt/data). Once target/debug/deps grows into the
+# thousands of objects, NTFS starts failing rustc's writes with ENOENT. Keep the
+# host build cache on the native filesystem; CARGO_TARGET_DIR still overrides it.
+target-dir = "/var/tmp/jondo-target"
+
+[alias]
+dev = "watch --no-vcs-ignores -w src -w assets -w Cargo.toml -x run"
+
+# Panic is abort in release, so nothing unwinds through Rust frames: without
+# unwind tables the binary drops its whole .eh_frame section. Identical code
+# folding then merges the copies the monomorphized UI leaves behind. The build
+# id and the padding between code and data are dead weight in a stripped binary.
+[target.x86_64-unknown-linux-gnu]
+rustflags = [
+    "-C",
+    "force-unwind-tables=no",
+    "-C",
+    "link-arg=-Wl,--icf=all",
+    "-C",
+    "link-arg=-Wl,--build-id=none",
+    "-C",
+    "link-arg=-Wl,-z,noseparate-code",
+]
+
+[target.aarch64-linux-android]
+rustflags = [
+    "-C",
+    "force-unwind-tables=no",
+    "-C",
+    "link-arg=-Wl,--icf=all",
+    "-C",
+    "link-arg=-Wl,--build-id=none",
+    "-C",
+    "link-arg=-Wl,-z,noseparate-code",
+]
