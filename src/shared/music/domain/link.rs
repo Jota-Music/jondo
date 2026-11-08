@@ -57,29 +57,10 @@ pub(crate) fn youtube_list(text: &str) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-pub(crate) fn youtube_ref(text: &str) -> Option<YoutubeRef> {
-    let text = text.trim();
-    if text.is_empty() {
-        return None;
-    }
-
-    if text.starts_with('@') {
-        return Some(YoutubeRef::Channel(text.to_owned()));
-    }
-
-    if youtube_channel(text) {
-        return Some(YoutubeRef::Channel(text.to_owned()));
-    }
-
-    if youtube_video(text) {
-        return Some(YoutubeRef::Video(text.to_owned()));
-    }
-
-    if youtube_playlist(text) {
-        return Some(YoutubeRef::Playlist(text.to_owned()));
-    }
-
-    let url = youtube_url(text)?;
+/// Resolves a YouTube address, never a bare id or handle: only text that is
+/// actually a link is accepted.
+pub(crate) fn youtube_link(text: &str) -> Option<YoutubeRef> {
+    let url = youtube_url(text.trim())?;
     let host = url
         .host_str()?
         .trim_start_matches("www.")
@@ -129,6 +110,36 @@ pub(crate) fn youtube_ref(text: &str) -> Option<YoutubeRef> {
         .map(|(_, value)| value.into_owned())
         .filter(|value| youtube_playlist(value))
         .map(YoutubeRef::Playlist)
+}
+
+/// A typed search may also be a bare id or handle; a copied link may not.
+pub(crate) fn youtube_ref(text: &str) -> Option<YoutubeRef> {
+    let text = text.trim();
+    if text.is_empty() {
+        return None;
+    }
+
+    if let Some(reference) = youtube_link(text) {
+        return Some(reference);
+    }
+
+    if text.starts_with('@') {
+        return Some(YoutubeRef::Channel(text.to_owned()));
+    }
+
+    if youtube_channel(text) {
+        return Some(YoutubeRef::Channel(text.to_owned()));
+    }
+
+    if youtube_video(text) {
+        return Some(YoutubeRef::Video(text.to_owned()));
+    }
+
+    if youtube_playlist(text) {
+        return Some(YoutubeRef::Playlist(text.to_owned()));
+    }
+
+    None
 }
 
 pub(crate) fn direct_url(text: &str) -> bool {
