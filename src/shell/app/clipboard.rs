@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::shared::music::domain::link::{YoutubeRef, spotify_link, youtube_list, youtube_ref};
+use crate::shared::music::domain::link::{YoutubeRef, spotify_link, youtube_link, youtube_list};
 
 use crate::shell::domain::Route;
 pub use crate::shell::domain::link::{Kind, Link, Target};
@@ -43,7 +43,7 @@ pub fn parse(text: &str) -> Option<Link> {
         });
     }
 
-    let (kind, target) = match youtube_ref(text)? {
+    let (kind, target) = match youtube_link(text)? {
         YoutubeRef::Video(id) => (Kind::Song, Target::Song(format!("youtube:{id}"))),
         YoutubeRef::Playlist(id) => (
             Kind::Playlist,

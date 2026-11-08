@@ -43,7 +43,7 @@ mod table_tests {
 #[cfg(test)]
 mod link_tests {
     use crate::shared::music::domain::link::{
-        YoutubeRef, direct_url, spotify_id, spotify_link, youtube_ref,
+        YoutubeRef, direct_url, spotify_id, spotify_link, youtube_link, youtube_ref,
     };
 
     use crate::shell::app::Route;
@@ -131,6 +131,22 @@ mod link_tests {
     }
 
     #[test]
+    fn only_a_youtube_address_is_a_link() {
+        assert_eq!(
+            youtube_link("https://youtu.be/dQw4w9WgXcQ"),
+            Some(YoutubeRef::Video("dQw4w9WgXcQ".to_owned()))
+        );
+        assert_eq!(
+            youtube_link("https://www.youtube.com/@jota"),
+            Some(YoutubeRef::Channel("@jota".to_owned()))
+        );
+        assert_eq!(youtube_link("dQw4w9WgXcQ"), None);
+        assert_eq!(youtube_link("PL1234567890abcdef"), None);
+        assert_eq!(youtube_link("@jota"), None);
+        assert_eq!(youtube_link("just some text"), None);
+    }
+
+    #[test]
     fn only_an_absolute_web_address_is_a_direct_query() {
         assert!(direct_url("https://example.com/watch"));
         assert!(!direct_url("example.com/watch"));
@@ -190,6 +206,10 @@ mod link_tests {
             parse("https://example.com/playlist/37i9dQZF1DXcBWIGoYBM5M"),
             None
         );
+        assert_eq!(parse("dQw4w9WgXcQ"), None);
+        assert_eq!(parse("PL1234567890abcdef"), None);
+        assert_eq!(parse("@jota"), None);
+        assert_eq!(parse("abcdefghijk"), None);
         assert_eq!(parse(""), None);
     }
 
