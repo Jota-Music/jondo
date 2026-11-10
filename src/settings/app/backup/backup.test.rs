@@ -254,9 +254,28 @@ fn a_settled_folder_is_a_stat_and_a_change_is_not() {
     assert!(settled(&store), "the pass just recorded the file");
     assert!(!pending(&store));
 
+    let written = store.sync_status.write_at;
+    assert!(written > 0, "the save is the baseline the panel shows");
+
+    let read = store.sync_status.read_at;
+    assert!(read > 0, "the save is also what the panel times");
+
+    std::thread::sleep(std::time::Duration::from_millis(2));
+    let again = save(&mut store).unwrap();
+    assert!(!again.modified, "the file already held these bytes");
+    assert!(
+        store.sync_status.read_at > read,
+        "save now moves the panel even when there is nothing to write"
+    );
+
+    let read = store.sync_status.read_at;
     let quiet = auto(&mut store).unwrap();
     assert!(!quiet.modified);
     assert_eq!(quiet.bytes, 0, "a settled pass reads nothing");
+    assert_eq!(
+        store.sync_status.read_at, read,
+        "a settled pass is not a save"
+    );
 
     store.sync_pending = true;
     assert!(!settled(&store));
@@ -463,6 +482,32 @@ fn a_newer_remote_session_stays() {
         crate::shared::crypto::session::decrypt(pass, blob).unwrap(),
         "SAPISID=remote"
     );
+}
+
+#[test]
+fn a_session_arrives_without_a_library_import() {
+    let pass = "secret";
+    let mut document = Document::default();
+    let mut carried = BTreeMap::new();
+    carried.insert(
+        "youtube".to_owned(),
+        Setting {
+            value: serde_json::json!(
+                crate::shared::crypto::session::encrypt(pass, "SAPISID=remote").unwrap()
+            ),
+            at: 20,
+        },
+    );
+    document.sessions = Some(carried);
+
+    let mut store = Store {
+        session_pass: pass.to_owned(),
+
+        ..Default::default()
+    };
+    sessions(&mut document, &mut store, Mode::Newer, false);
+
+    assert_eq!(store.youtube_cookies, "SAPISID=remote");
 }
 
 #[test]

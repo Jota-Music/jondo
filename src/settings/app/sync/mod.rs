@@ -33,8 +33,12 @@ impl Jondo {
         self.backup_running = false;
         let Some((store, changed)) = accept_backup(self.store_revision, revision, store, &result)
         else {
-            // The library moved while the pass ran. Throw this result away and
-            // let the debounce start a fresh one with the new data.
+            // The library moved while the pass ran. A good pass starts again
+            // from the newer store; a failed one waits for the next watch.
+            if result.is_ok() {
+                self.start_backup(cx);
+            }
+
             return;
         };
 
@@ -84,11 +88,12 @@ impl Jondo {
         false
     }
 
+    /// A pass always runs in the background: the folder can live on a network
+    /// mount, and its stat, read and write must never hold a frame. The settle
+    /// check is the pass's own first step.
     #[cfg(not(target_os = "android"))]
-    fn start_backup(&mut self, _cx: &gpui::App) -> bool {
-        if backup::settled(&self.store) {
-            backup::touch(&mut self.store);
-            self.save_store();
+    pub(crate) fn start_backup(&mut self, _cx: &gpui::App) -> bool {
+        if self.store.sync_folder.trim().is_empty() {
             return false;
         }
 
@@ -100,6 +105,27 @@ impl Jondo {
             Event::Backup(revision, Box::new(snapshot), result)
         });
         false
+    }
+
+    /// Reads the document once so the sessions sealed with a fresh pass reach
+    /// this device, without waiting for the next save.
+    pub(crate) fn reimport(&mut self, cx: &gpui::App) {
+        if self.store.sync_folder.trim().is_empty() {
+            return;
+        }
+
+        #[cfg(target_os = "android")]
+        {
+            let _ = cx;
+            self.start_pass(true);
+        }
+
+        #[cfg(not(target_os = "android"))]
+        {
+            if !self.backup_running {
+                self.start_backup(cx);
+            }
+        }
     }
 
     /// A save bumps the revision the async backup compares against, so a pass
@@ -163,28 +189,6 @@ impl Jondo {
         self.pending_saf = None;
         let last = self.store.sync_folder.trim().to_owned();
         self.saf.pick(pick, &last);
-    }
-
-    #[cfg(not(target_os = "android"))]
-    pub(crate) fn restore_backup(&mut self) {
-        if self.store.sync_folder.trim().is_empty() {
-            return;
-        }
-
-        match backup::auto(&mut self.store) {
-            Ok(stats) => {
-                if stats.changed() > 0 || stats.modified {
-                    self.save_store();
-                }
-
-                log::info!(
-                    "backup: {} read, {} playlists applied",
-                    stats.bytes,
-                    stats.playlists
-                );
-            }
-            Err(error) => log::warn!("backup: {error}"),
-        }
     }
 
     pub fn backup(&mut self, mode: backup::Mode, cx: &gpui::App) {
@@ -265,31 +269,6 @@ impl Jondo {
             }
             Err(error) => self.fail(error),
         }
-    }
-
-    pub fn shutdown(&mut self, cx: &gpui::Context<Self>) {
-        self.store.sync_pending = true;
-        self.persist(cx);
-        self.store.save_now();
-    }
-
-    pub fn persist(&mut self, cx: &gpui::App) {
-        let player = self.player.read(cx);
-        self.store.volume = player.volume;
-        self.store.muted = player.muted;
-        self.store.queue = player.queue.songs.clone();
-        self.store.queue_index = player.queue.at;
-        self.store.position = player.progress;
-        self.store.shuffle = player.queue.shuffle;
-        self.store.compact = self.ui.compact;
-        if !self.rooms.read(cx).relay_locked {
-            self.store.relay_url = self.rooms.read(cx).relay.trim().to_owned();
-            self.store.relay_token = self.rooms.read(cx).token.trim().to_owned();
-        }
-
-        self.store.room_code = self.rooms.read(cx).code.clone();
-        self.store.room_password = self.rooms.read(cx).password.clone();
-        self.save_store();
     }
 
     pub(crate) fn touch_library(&mut self) {

@@ -357,6 +357,7 @@ pub(super) fn sessions(
 ) -> usize {
     let mut carried = document.sessions.take().unwrap_or_default();
     let pass = store.session_pass.trim().to_owned();
+    let apply = apply || !pass.is_empty();
     let mut changed = 0;
 
     if !pass.is_empty() {

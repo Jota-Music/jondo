@@ -62,12 +62,17 @@ pub(super) fn location(folder: &str, name: &str, status: &SyncStatus) -> AnyElem
     body = body.tooltip(move |window, cx| Tooltip::new(full.clone()).build(window, cx));
 
     if status.at > 0 {
+        let saved = if status.read_at > 0 {
+            status.read_at
+        } else {
+            status.at
+        };
         let mut stats = div()
             .mt(theme::unit(2.0))
             .flex()
             .flex_col()
             .gap(theme::unit(4.0))
-            .child(stat(t("Last save"), ago(status.at), theme::ZINC_300))
+            .child(stat(t("Last save"), ago(saved), theme::ZINC_300))
             .child(stat(t("Size"), size(status.bytes), theme::ZINC_300))
             .child(stat(
                 t("Playlists in the file"),
