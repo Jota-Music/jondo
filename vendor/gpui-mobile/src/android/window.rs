@@ -36,8 +36,8 @@ use anyhow::{Context as _, Result};
 use futures::channel::oneshot;
 use gpui::{
     self, AtlasKey, AtlasTile, Capslock, DispatchEventResult, GpuSpecs, Modifiers, PlatformAtlas,
-    PlatformDisplay, PlatformInputHandler, PlatformWindow, PromptButton, PromptLevel,
-    RequestFrameOptions, WindowBackgroundAppearance, WindowBounds, WindowControlArea,
+    PlatformDisplay, PlatformGestures as _, PlatformInputHandler, PlatformWindow, PromptButton,
+    PromptLevel, RequestFrameOptions, WindowBackgroundAppearance, WindowBounds, WindowControlArea,
     WindowVisibility,
 };
 use gpui_wgpu::{wgpu, GpuContext, WgpuRenderer, WgpuSurfaceConfig};
@@ -1745,7 +1745,8 @@ impl PlatformWindow for AndroidPlatformWindow {
 
         // Preserve raw contacts so GPUI can arbitrate long presses, claimed
         // control drags and ordinary pans, including hover suppression and inertia.
-        // `FlingGuard` keeps a contact that stops a fling from inheriting its axis.
+        // `FlingGuard` keeps a contact that stops a fling from inheriting its
+        // axis and from being treated as a tap.
         {
             let cb = Arc::clone(&input_cb);
             let window = Arc::downgrade(&self.window);
@@ -1756,7 +1757,8 @@ impl PlatformWindow for AndroidPlatformWindow {
                 id
             };
             let mut active_touches = HashMap::new();
-            let mut fling_guard = crate::fling_guard::FlingGuard::new();
+            let mut fling_guard =
+                crate::fling_guard::FlingGuard::new(super::platform::AndroidGestures.tuning());
             self.window.on_touch(move |touch| {
                 let phase = match touch.action {
                     0 => gpui::TouchPhase::Started,

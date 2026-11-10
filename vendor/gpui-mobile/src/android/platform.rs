@@ -1114,7 +1114,12 @@ impl AndroidPlatform {
     ///
     /// Useful in headless tests where there is no real ALooper.
     pub fn flush_main_thread_tasks(&self) {
-        self.state.lock().dispatcher.flush_main_thread_tasks();
+        // Run the tasks without holding `state`: a queued task is arbitrary
+        // GPUI code and may call back into the platform, which locks `state`
+        // again. The mutex is not reentrant, so keeping it here deadlocks the
+        // main thread — an app that stops drawing and stops taking input.
+        let dispatcher = self.state.lock().dispatcher.clone();
+        dispatcher.flush_main_thread_tasks();
     }
 }
 
@@ -1124,7 +1129,7 @@ impl AndroidPlatform {
 /// physics are `UIScrollView`'s — an exponential decay that coasts noticeably
 /// longer than Android's, so a fling reads as unresponsive to anyone used to
 /// the platform.
-struct AndroidGestures;
+pub(crate) struct AndroidGestures;
 
 impl PlatformGestures for AndroidGestures {
     fn tuning(&self) -> GestureTuning {

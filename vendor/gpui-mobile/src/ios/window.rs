@@ -17,9 +17,9 @@ use crate::frame_demand::FrameDemand;
 
 use gpui::{
     point, px, size, AnyWindowHandle, AtlasKey, AtlasTextureId, AtlasTextureKind, AtlasTile,
-    Bounds, Capslock, DevicePixels, DispatchEventResult, GpuSpecs, Modifiers, Pixels,
-    PlatformAtlas, PlatformDisplay, PlatformInput, PlatformInputHandler, PlatformWindow, Point,
-    PromptButton, PromptLevel, RequestFrameOptions, Scene, Size, TileId, WindowAppearance,
+    Bounds, Capslock, DevicePixels, DispatchEventResult, GestureTuning, GpuSpecs, Modifiers,
+    Pixels, PlatformAtlas, PlatformDisplay, PlatformInput, PlatformInputHandler, PlatformWindow,
+    Point, PromptButton, PromptLevel, RequestFrameOptions, Scene, Size, TileId, WindowAppearance,
     WindowBackgroundAppearance, WindowBounds, WindowControlArea, WindowParams, WindowVisibility,
 };
 use gpui_wgpu::{GpuContext, WgpuContext, WgpuRenderer, WgpuSurfaceConfig};
@@ -725,7 +725,7 @@ impl IosWindow {
                 modifiers: Cell::new(Modifiers::default()),
                 active_touches: RefCell::new(HashMap::new()),
                 next_touch_id: Cell::new(0),
-                fling_guard: RefCell::new(FlingGuard::new()),
+                fling_guard: RefCell::new(FlingGuard::new(GestureTuning::default())),
                 renderer: Mutex::new(None),
             };
 
