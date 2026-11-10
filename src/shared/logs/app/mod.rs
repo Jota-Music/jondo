@@ -1,8 +1,8 @@
 use std::collections::VecDeque;
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock};
 
 const LIMIT: usize = 4000;
 
@@ -13,8 +13,33 @@ const APP: &str = "jondo";
 /// Set when `RUST_LOG` names a level: the operator asked for every crate.
 static LOUD: AtomicBool = AtomicBool::new(false);
 static LINES: Mutex<VecDeque<String>> = Mutex::new(VecDeque::new());
+static SINK: OnceLock<Sink> = OnceLock::new();
 
+/// Android already has a logger, so this one carries it: the platform copy keeps
+/// logcat working and the ring below is what the logs panel and the share sheet
+/// read. Installing only the platform logger left the phone with no log to give.
+#[cfg(target_os = "android")]
+struct Sink {
+    android: android_logger::AndroidLogger,
+}
+
+#[cfg(not(target_os = "android"))]
 struct Sink;
+
+fn sink() -> Sink {
+    #[cfg(target_os = "android")]
+    {
+        let config = android_logger::Config::default()
+            .with_max_level(log::max_level())
+            .with_tag(APP);
+        Sink {
+            android: android_logger::AndroidLogger::new(config),
+        }
+    }
+
+    #[cfg(not(target_os = "android"))]
+    Sink
+}
 
 fn wanted(level: log::Level, target: &str) -> bool {
     LOUD.load(Ordering::Relaxed) || target.starts_with(APP) || level <= log::LevelFilter::Warn
@@ -22,11 +47,15 @@ fn wanted(level: log::Level, target: &str) -> bool {
 
 impl log::Log for Sink {
     fn enabled(&self, metadata: &log::Metadata) -> bool {
-        metadata.level() <= log::max_level() && wanted(metadata.level(), metadata.target())
+        metadata.level() <= log::max_level()
+            && (cfg!(target_os = "android") || wanted(metadata.level(), metadata.target()))
     }
 
     fn log(&self, record: &log::Record) {
-        if !self.enabled(record.metadata()) {
+        #[cfg(target_os = "android")]
+        self.android.log(record);
+
+        if !wanted(record.level(), record.target()) {
             return;
         }
 
@@ -40,14 +69,13 @@ impl log::Log for Sink {
             record.level(),
             record.args()
         );
+        #[cfg(not(target_os = "android"))]
         eprintln!("{line}");
         push(line);
     }
 
     fn flush(&self) {}
 }
-
-static SINK: Sink = Sink;
 
 /// Installs the logger. Without `RUST_LOG` this app speaks at `info` and every
 /// other crate only at `warn`; setting `RUST_LOG` (e.g. `RUST_LOG=debug`) lifts
@@ -57,8 +85,8 @@ pub fn install() {
         .ok()
         .and_then(|value| value.parse::<log::LevelFilter>().ok());
     LOUD.store(asked.is_some(), Ordering::Relaxed);
-    let _ = log::set_logger(&SINK);
     log::set_max_level(asked.unwrap_or(log::LevelFilter::Info));
+    let _ = log::set_logger(SINK.get_or_init(sink));
 }
 
 fn push(line: String) {
