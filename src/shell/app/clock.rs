@@ -1,7 +1,9 @@
 use std::time::{Duration, Instant};
 
 use gpui::{Context, Window};
+use raw_window_handle::HasWindowHandle as _;
 
+use crate::music::player::Tick;
 use crate::shared::ui::views::design::theme;
 
 use super::*;
@@ -109,9 +111,16 @@ impl Jondo {
 
         self.room_tick(cx);
 
-        if self.player.update(cx, |player, _| player.tick()) {
-            changed = true;
-            self.next(cx);
+        match self.player.update(cx, |player, _| player.tick()) {
+            Tick::Ended => {
+                changed = true;
+                self.next(cx);
+            }
+            Tick::Failed(error) => {
+                changed = true;
+                self.recover(error, cx);
+            }
+            Tick::Idle => {}
         }
 
         if self.player.update(cx, |player, _| player.settle()) {
@@ -131,6 +140,12 @@ impl Jondo {
     }
 
     pub fn tick(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        // The pin reaches the window server through the native handle, and
+        // settings owns no window: the frame that paints hands it over.
+        if let Ok(handle) = window.window_handle() {
+            pin::attach(handle.as_raw());
+        }
+
         // Base reads the desktop's reduced-motion preference into the app flag
         // once it starts. The product's transitions are part of its language,
         // so the clock takes the flag back instead of letting every render do
@@ -156,6 +171,7 @@ impl Jondo {
         }
 
         self.reorder_tick(cx);
+        crate::shell::app::platform::media::sync(self, cx);
         #[cfg(target_os = "android")]
         let android = self.tick_android(cx);
         #[cfg(target_os = "android")]

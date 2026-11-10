@@ -69,6 +69,7 @@ impl Jondo {
                     });
 
                     self.persist(cx);
+                    self.prefetch(cx);
                 }
             }
             Event::YouTubePreview { token, result } => {
@@ -175,7 +176,6 @@ impl Jondo {
                             }
                         });
 
-                        self.prefetch(cx);
                         self.persist(cx);
                     }
                     Err(error) => {

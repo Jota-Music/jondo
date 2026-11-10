@@ -4,8 +4,7 @@ mod drag;
 mod events;
 mod jobs;
 pub(crate) mod motion;
-#[cfg(target_os = "android")]
-pub(crate) mod platform;
+pub mod platform;
 mod render;
 mod route;
 mod setup;

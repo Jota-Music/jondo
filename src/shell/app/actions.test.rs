@@ -98,6 +98,43 @@ fn repeat_mode_survives_a_restart(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn stop_leaves_the_track_ready_to_start_over(cx: &mut TestAppContext) {
+    home();
+    let mut store = Store::load();
+    store.queue = vec![Song {
+        id: "local:song:one".to_owned(),
+        name: "One".to_owned(),
+        duration: 200,
+        ..Default::default()
+    }];
+    store.queue_index = 0;
+
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        theme::install(cx);
+    });
+
+    let (app, cx) = cx.add_window_view(|window, cx| Jondo::boot(store, window, cx));
+    cx.run_until_parked();
+    app.update(cx, |app, cx| {
+        app.player.update(cx, |player, _| {
+            player.loaded = true;
+            player.playing = true;
+            player.progress = 42.0;
+        });
+        app.stop(cx);
+    });
+
+    let (playing, loaded, progress) = app.read_with(cx, |app, cx| {
+        let player = app.player.read(cx);
+        (player.playing, player.loaded, player.progress)
+    });
+    assert!(!playing, "stop ends playback");
+    assert!(!loaded, "stop drops the loaded stream");
+    assert_eq!(progress, 0.0, "stop rewinds to the start");
+}
+
+#[gpui::test]
 fn space_types_into_a_focused_field(cx: &mut TestAppContext) {
     home();
     let mut store = Store::load();

@@ -19,6 +19,9 @@ pub type Actions = Box<dyn Fn(&Jondo, &App) -> Vec<Item>>;
 pub struct Play {
     pub enabled: bool,
     pub playing: bool,
+    /// Paused while the stream was still on its way. The button keeps the
+    /// pause bars instead of switching to the play triangle mid-load.
+    pub paused: bool,
     pub loading: bool,
     pub on_click: Click,
 }
@@ -60,7 +63,7 @@ pub fn show(app: &mut Jondo, cx: &mut Context<Jondo>, header: Header<'_>) -> Any
         } else {
             button::circle(
                 "page-play",
-                if play.playing {
+                if play.playing || play.paused {
                     icons::PAUSE
                 } else {
                     icons::PLAY
