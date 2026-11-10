@@ -68,38 +68,30 @@ pub(super) fn language(app: &mut Jondo, cx: &mut Context<Jondo>) -> AnyElement {
     )
 }
 
+#[cfg(not(target_os = "android"))]
 pub(super) fn discord(app: &mut Jondo, cx: &mut Context<Jondo>) -> AnyElement {
-    #[cfg(target_os = "android")]
-    {
-        let _ = (app, cx);
-        div().into_any_element()
-    }
-
-    #[cfg(not(target_os = "android"))]
-    {
-        let enabled = app.store.discord;
-        section(
-            Icon::Headphones,
-            t("Discord"),
-            Some(
-                switch(
-                    "discord-switch",
-                    enabled,
-                    app.accent,
-                    cx.listener(|app, value: &bool, _, cx| {
-                        app.set_discord(*value, cx);
-                        cx.notify();
-                    }),
-                )
-                .into_any_element(),
-            ),
-            text::text(
-                t("Show what you are listening to in your Discord profile."),
-                12.0,
-                theme::FAINT,
-            ),
-        )
-    }
+    let enabled = app.store.discord;
+    section(
+        Icon::Headphones,
+        t("Discord"),
+        Some(
+            switch(
+                "discord-switch",
+                enabled,
+                app.accent,
+                cx.listener(|app, value: &bool, _, cx| {
+                    app.set_discord(*value, cx);
+                    cx.notify();
+                }),
+            )
+            .into_any_element(),
+        ),
+        text::text(
+            t("Show what you are listening to in your Discord profile."),
+            12.0,
+            theme::FAINT,
+        ),
+    )
 }
 
 #[cfg(target_os = "android")]
