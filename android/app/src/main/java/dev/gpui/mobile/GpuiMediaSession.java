@@ -42,9 +42,11 @@ public class GpuiMediaSession {
 
     private static String sTitle = "Jondo";
     private static String sArtist = "";
+    private static String sAlbum = "";
     private static long sDurationMs = 0;
     private static Bitmap sArtwork;
     private static boolean sPlaying;
+    private static boolean sNotificationPermissionRequested;
 
     private static MediaSessionCompat sSession;
     private static NotificationManager sNotificationManager;
@@ -258,13 +260,15 @@ public class GpuiMediaSession {
      *
      * @param title     Track/video title.
      * @param artist    Artist name (or app name).
+     * @param album     Album title (may be empty).
      * @param durationMs Duration in milliseconds.
      */
-    public static void setMetadata(String title, String artist, long durationMs) {
+    public static void setMetadata(String title, String artist, String album, long durationMs) {
         if (sSession == null) return;
 
         sTitle = title != null ? title : "Unknown";
         sArtist = artist != null ? artist : "Jondo";
+        sAlbum = album != null ? album : "";
         sDurationMs = durationMs;
         pushMetadata();
     }
@@ -286,6 +290,7 @@ public class GpuiMediaSession {
         MediaMetadataCompat.Builder builder = new MediaMetadataCompat.Builder()
                 .putString(MediaMetadataCompat.METADATA_KEY_TITLE, sTitle)
                 .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, sArtist)
+                .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, sAlbum)
                 .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, sDurationMs);
         if (sArtwork != null) {
             builder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, sArtwork);
@@ -346,6 +351,17 @@ public class GpuiMediaSession {
         if (sActivity == null || sSession == null || sNotificationManager == null) return;
 
         try {
+            // Android 13+ hides the notification (and with it every transport
+            // button) until the user grants POST_NOTIFICATIONS.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                    && !sNotificationPermissionRequested
+                    && sActivity.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                            != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                sNotificationPermissionRequested = true;
+                sActivity.requestPermissions(
+                        new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 1004);
+            }
+
             // Intent to reopen the app when notification is tapped
             Intent openIntent = sActivity.getPackageManager()
                     .getLaunchIntentForPackage(sActivity.getPackageName());
@@ -449,6 +465,8 @@ public class GpuiMediaSession {
         sPlaying = false;
         sPausedByFocus = false;
         sResumeOnGain = false;
+        sAlbum = "";
+        sArtwork = null;
         sAudioManager = null;
         sCallbackHandler = null;
         sActivity = null;
