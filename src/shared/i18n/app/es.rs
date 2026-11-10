@@ -437,6 +437,7 @@ pub(super) fn spanish(key: &str) -> &str {
         "The relay answered {}." => "El relay respondió {}.",
         "The relay accepted this token." => "El relay aceptó este token.",
         "The relay rejected this token." => "El relay rechazó este token.",
+        "The stream stopped" => "La reproducción se detuvo",
         "Volume" => "Volumen",
         "Warning" => "Aviso",
         "playlists" => "playlists",
