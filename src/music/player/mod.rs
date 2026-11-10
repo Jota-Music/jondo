@@ -3,6 +3,7 @@ pub mod domain;
 pub mod views;
 
 pub use app::Player;
+pub use app::Tick;
 
 pub(crate) use app::{parse_repeat, repeat_name, resolve};
 pub use domain::{Edit, Queue, Repeat, delta};

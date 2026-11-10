@@ -1,7 +1,19 @@
 use crate::shared::i18n::t;
 
+use futures_util::StreamExt;
+
 use crate::shared::music::domain::{Playlist, Song, Source};
+use crate::shared::youtube::candidates;
 use crate::shell::app::{Event, Jondo};
+
+/// How many tracks in line are resolved in the background, like Jota's
+/// PRELOAD_AHEAD: an already-resolved URL keeps playing while YouTube is slow,
+/// blocked or rate limited.
+const AHEAD: usize = 4;
+
+/// How many of those resolve at once. Each one holds a player answer in memory
+/// while it is parsed, so a handful in flight is a few megabytes of JSON.
+const PARALLEL: usize = 2;
 
 impl Jondo {
     pub fn play_playlist(&mut self, id: &str, cx: &mut gpui::Context<Self>) {
@@ -183,10 +195,9 @@ impl Jondo {
 
         let youtube = self.youtube.clone();
         let id = song.id.clone();
-        let query = song.query();
+        let song = song.clone();
         self.jobs.spawn(async move {
-            let video = youtube
-                .search(&query)
+            let video = candidates(&youtube, &song)
                 .await
                 .ok()
                 .and_then(|videos| videos.first().map(|video| video.id.clone()));
@@ -194,45 +205,62 @@ impl Jondo {
         });
     }
 
-    /// The track next in line, as the queue would play it.
-    pub(crate) fn upcoming(&self, cx: &gpui::App) -> Option<Song> {
+    /// The tracks in line, as the queue would play them.
+    fn ahead(&self, cx: &gpui::App, count: usize) -> Vec<Song> {
         let player = self.player.read(cx);
         player
             .queue
-            .next_index(player.repeat)
-            .and_then(|index| player.queue.songs.get(index))
+            .ahead(player.repeat, count)
+            .into_iter()
             .cloned()
+            .collect()
     }
 
-    /// Warms the stream of the track in line, so skipping does not wait for
-    /// the player call. Best effort: a failed prefetch costs nothing.
-    pub(crate) fn prefetch(&mut self, cx: &gpui::App) {
+    /// Warms the streams of the tracks in line, so skipping does not wait for
+    /// the player call. A song whose video is not linked yet is left to
+    /// `identify`: its link arrives as an event and warms the stream then. Best
+    /// effort, a failed prefetch costs nothing.
+    pub(crate) fn prefetch(&self, cx: &gpui::App) {
         if self.rooms.read(cx).live() {
             return;
         }
 
-        let Some(next) = self.upcoming(cx) else {
-            return;
-        };
+        let mut videos: Vec<String> = Vec::new();
+        for song in self.ahead(cx, AHEAD) {
+            let video = song
+                .video()
+                .filter(|id| !id.is_empty())
+                .map(str::to_owned)
+                .or_else(|| self.store.youtube_links.get(&song.id).cloned());
+            if let Some(video) = video
+                && !videos.contains(&video)
+                && self.youtube.cached(&video).is_none()
+            {
+                videos.push(video);
+            }
+        }
 
-        let video = next
-            .video()
-            .filter(|id| !id.is_empty())
-            .map(str::to_owned)
-            .or_else(|| self.store.youtube_links.get(&next.id).cloned());
-        let Some(video) = video else {
-            return;
-        };
-
-        if self.youtube.cached(&video).is_some() {
+        if videos.is_empty() {
             return;
         }
 
         let youtube = self.youtube.clone();
         self.jobs.run(async move {
-            if let Err(error) = youtube.stream(&video).await {
-                log::debug!("prefetch {video}: {error}");
-            }
+            // Only the URLs are warmed, never the audio: a prefetched stream is
+            // two short strings in `Youtube::streams`. The bound is on the
+            // player answers in flight while they are parsed.
+            futures_util::stream::iter(videos)
+                .map(|video| {
+                    let youtube = youtube.clone();
+                    async move {
+                        if let Err(error) = youtube.stream(&video).await {
+                            log::debug!("prefetch {video}: {error}");
+                        }
+                    }
+                })
+                .buffer_unordered(PARALLEL)
+                .for_each(|()| async {})
+                .await;
         });
     }
 
@@ -245,16 +273,59 @@ impl Jondo {
     }
 
     pub fn play_current_at(&mut self, start: f64, cx: &mut gpui::Context<Self>) {
-        self.load_current_at(start, true, cx);
+        self.load_current(start, true, false, cx);
     }
 
     pub fn load_current_at(&mut self, start: f64, play: bool, cx: &mut gpui::Context<Self>) {
+        self.load_current(start, play, false, cx);
+    }
+
+    /// A stream died mid-track. The same song is resolved again with fresh URLs
+    /// and untried candidates once; skipping is only for a load that fails on
+    /// its own, which surfaces the error instead of quietly moving on.
+    pub(crate) fn recover(&mut self, error: String, cx: &mut gpui::Context<Self>) {
+        // The URL that just died is the cached one, and it would die the same
+        // way on the next play: drop it before asking for a fresh one.
+        let video = self
+            .player
+            .read(cx)
+            .current()
+            .and_then(|song| song.video().map(str::to_owned));
+        if let Some(video) = video {
+            self.youtube.forget(&video);
+        }
+
+        if !self.player.update(cx, |player, _| player.retry()) {
+            self.player
+                .update(cx, |player, _| player.fail(error.clone()));
+            self.fail(error);
+            return;
+        }
+
+        // A room replays the round on the shared clock: retrying the stream
+        // alone would put this member's position out of step with the rest.
+        if self.rooms.read(cx).live() {
+            self.play_current(cx);
+            return;
+        }
+
+        let (play, start) = {
+            let player = self.player.read(cx);
+            (player.playing, player.progress)
+        };
+        self.load_current(start, play, true, cx);
+    }
+
+    fn load_current(&mut self, start: f64, play: bool, fresh: bool, cx: &mut gpui::Context<Self>) {
         let Some(song) = self.player.read(cx).current().cloned() else {
             return;
         };
 
         self.player.update(cx, |player, _| {
             player.stop();
+            if !fresh {
+                player.retried = false;
+            }
             player.loading = true;
             player.error = None;
             player.progress = start.max(0.0);
@@ -266,7 +337,7 @@ impl Jondo {
         let youtube = self.youtube.clone();
         let known = self.store.youtube_links.get(&song.id).cloned();
         self.jobs.spawn(async move {
-            let (resolved, result) = resolve(youtube, song, known).await;
+            let (resolved, result) = resolve(youtube, song, known, fresh).await;
             Event::YouTubeStream {
                 token,
                 song: resolved,
@@ -276,9 +347,10 @@ impl Jondo {
             }
         });
 
-        if let Some(next) = self.upcoming(cx) {
-            self.identify(&next);
+        for song in self.ahead(cx, AHEAD) {
+            self.identify(&song);
         }
+        self.prefetch(cx);
     }
 
     pub fn toggle(&mut self, cx: &mut gpui::Context<Self>) {
@@ -287,6 +359,8 @@ impl Jondo {
             let action = if playing { "play" } else { "pause" };
             self.control(cx, serde_json::json!({ "action": action }));
             self.persist(cx);
+            // A media key reaches this without a click to repaint the button.
+            cx.notify();
             return;
         }
 
@@ -308,6 +382,18 @@ impl Jondo {
                 self.play_current_at(start, cx);
             }
         }
+    }
+
+    /// The OS stop control ends the track instead of pausing it: the card goes
+    /// away and the next play starts from the top.
+    pub fn stop(&mut self, cx: &mut gpui::Context<Self>) {
+        self.player.update(cx, |player, _| {
+            player.stop();
+            player.progress = 0.0;
+        });
+        self.control(cx, serde_json::json!({ "action": "stop" }));
+        self.persist(cx);
+        cx.notify();
     }
 
     pub fn next(&mut self, cx: &mut gpui::Context<Self>) {

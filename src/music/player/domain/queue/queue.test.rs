@@ -33,6 +33,46 @@ fn previous_honours_repeat_and_order() {
 }
 
 #[test]
+fn ahead_lists_what_the_queue_plays_next() {
+    let mut queue = Queue::default();
+    queue.set(vec![song("a"), song("b"), song("c"), song("d")], 0);
+    let ids = |songs: Vec<&Song>| {
+        songs
+            .into_iter()
+            .map(|song| song.id.clone())
+            .collect::<Vec<_>>()
+    };
+
+    assert_eq!(ids(queue.ahead(Repeat::Off, 2)), ["b", "c"]);
+    assert_eq!(ids(queue.ahead(Repeat::Off, 9)), ["b", "c", "d"]);
+    assert!(queue.ahead(Repeat::One, 2).is_empty());
+
+    queue.at = 3;
+    assert!(queue.ahead(Repeat::Off, 2).is_empty());
+    assert_eq!(ids(queue.ahead(Repeat::All, 2)), ["a", "b"]);
+    assert_eq!(ids(queue.ahead(Repeat::All, 9)), ["a", "b", "c"]);
+}
+
+#[test]
+fn ahead_lists_what_the_queue_plays_next_after_shuffle() {
+    let mut queue = Queue::default();
+    queue.set((0..6).map(|i| song(&format!("s{i}"))).collect(), 2);
+    queue.set_shuffle(true, Some(7));
+
+    let at = queue.at;
+    let expected = (1..=3)
+        .map(|step| queue.songs[(at + step) % 6].id.clone())
+        .collect::<Vec<_>>();
+    let ahead = queue
+        .ahead(Repeat::All, 3)
+        .into_iter()
+        .map(|song| song.id.clone())
+        .collect::<Vec<_>>();
+
+    assert_eq!(ahead, expected);
+}
+
+#[test]
 fn moving_keeps_the_current_track_selected() {
     let mut queue = Queue::default();
     queue.set(vec![song("a"), song("b"), song("c"), song("d")], 2);

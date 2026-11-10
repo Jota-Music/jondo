@@ -195,6 +195,25 @@ impl Queue {
         }
     }
 
+    /// The songs the queue would play next, in order. One never moves, and Off
+    /// stops at the end instead of wrapping, so this matches `next_index`.
+    pub fn ahead(&self, repeat: Repeat, count: usize) -> Vec<&Song> {
+        let len = self.songs.len();
+        if len == 0 || repeat == Repeat::One {
+            return Vec::new();
+        }
+
+        let at = self.at.min(len - 1);
+        let last = match repeat {
+            Repeat::All => count.min(len - 1),
+            _ => count.min(len - 1 - at),
+        };
+
+        (1..=last)
+            .filter_map(|step| self.songs.get((at + step) % len))
+            .collect()
+    }
+
     pub fn move_song(&mut self, from: usize, to: usize) {
         if from >= self.songs.len() || to >= self.songs.len() || from == to {
             return;
