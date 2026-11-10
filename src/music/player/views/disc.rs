@@ -6,10 +6,11 @@ use gpui::{
     App, Background, Bounds, BoxShadow, Context, Corners, CursorStyle, Div, Element, ElementId,
     GlobalElementId, HitboxBehavior, Hsla, InspectorElementId, IntoElement, LayoutId, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, PathBuilder, Pixels, RenderImage,
-    Rgba, Style, Styled, Window, div, point, quad, relative, size,
+    Rgba, Style, Styled, TouchDragEvent, TouchPhase, Window, div, point, quad, relative, size,
 };
 
 use crate::shared::ui::views::components::button;
+use crate::shared::ui::views::components::paint::{self, Scope};
 use crate::shared::ui::views::design::icons;
 use crate::shared::ui::views::design::theme;
 use crate::shell::app::{Drag, Jondo};
@@ -220,12 +221,17 @@ impl Element for Ring {
                 }
                 let over = area.contains(&event.position) && on_ring(event.position);
                 if OVER_RING.with(|state| state.replace(over)) != over {
-                    cx.refresh_windows();
+                    paint::paint(Scope::Shell, cx);
                 }
             });
             let seek = self.on_seek.clone();
+            let ring = hitbox.clone();
             window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
-                if phase.bubble() && event.button == MouseButton::Left && on_ring(event.position) {
+                if phase.bubble()
+                    && event.button == MouseButton::Left
+                    && ring.is_hovered(window)
+                    && on_ring(event.position)
+                {
                     seek(fraction(event.position), false, window, cx);
                     cx.stop_propagation();
                 }
@@ -245,6 +251,39 @@ impl Element for Ring {
                     }
                 });
             }
+
+            // A finger has no pointer capture: the recognizer offers a touch
+            // drag instead. As in Jota's circular progress, the press arms on
+            // the ring, the moves retarget by angle from anywhere, and the
+            // release commits. Taking the gesture (prevent_default) is what
+            // keeps the sheet from scrolling under the finger instead.
+            let dragging = self.dragging;
+            let seek = self.on_seek.clone();
+            let area = hitbox.clone();
+            let held = Rc::new(Cell::new(false));
+            window.on_mouse_event(move |event: &TouchDragEvent, phase, window, cx| {
+                if !phase.bubble() {
+                    return;
+                }
+
+                if event.phase == TouchPhase::Started {
+                    if !area.contains(&event.start_position) || !on_ring(event.start_position) {
+                        return;
+                    }
+
+                    held.set(true);
+                    window.prevent_default();
+                } else if !dragging && !held.get() {
+                    return;
+                }
+
+                let commit = matches!(event.phase, TouchPhase::Ended | TouchPhase::Cancelled);
+                if commit {
+                    held.set(false);
+                }
+
+                seek(fraction(event.position), commit, window, cx);
+            });
         }
     }
 }
@@ -349,7 +388,7 @@ pub(super) fn disc(app: &mut Jondo, cx: &mut Context<Jondo>, size: f32, enabled:
                         });
                     }
 
-                    cx.notify();
+                    app.notify_shell(cx);
                 });
             }
         }))
@@ -371,7 +410,8 @@ pub(super) fn disc(app: &mut Jondo, cx: &mut Context<Jondo>, size: f32, enabled:
                             theme::alpha(theme::BINARY, 0.6),
                         )),
                 )
-                .child(button::icon_flat(
+                .child(button::icon_flat_in(
+                    Scope::Shell,
                     "disc-prev",
                     icons::SKIP_BACK,
                     24.0,
@@ -402,7 +442,8 @@ pub(super) fn disc(app: &mut Jondo, cx: &mut Context<Jondo>, size: f32, enabled:
                             theme::alpha(theme::BINARY, 0.6),
                         )),
                 )
-                .child(button::icon_flat(
+                .child(button::icon_flat_in(
+                    Scope::Shell,
                     "disc-next",
                     icons::SKIP_FORWARD,
                     24.0,
@@ -427,7 +468,8 @@ pub(super) fn disc(app: &mut Jondo, cx: &mut Context<Jondo>, size: f32, enabled:
                 .child(if loading {
                     button::circle_spinner(48.0, 24.0, accent, binary).into_any_element()
                 } else {
-                    button::circle(
+                    button::circle_in(
+                        Scope::Shell,
                         "disc-play",
                         if playing { icons::PAUSE } else { icons::PLAY },
                         48.0,
@@ -444,3 +486,7 @@ pub(super) fn disc(app: &mut Jondo, cx: &mut Context<Jondo>, size: f32, enabled:
                 }),
         )
 }
+
+#[cfg(test)]
+#[path = "disc.test.rs"]
+mod tests;
