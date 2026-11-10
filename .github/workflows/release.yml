@@ -130,8 +130,124 @@ jobs:
           path: jondo.apk
           if-no-files-found: error
 
+  macos:
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - name: Version from tag
+        run: |
+          perl -0pi -e 's/^version = ".*"/version = "'"${GITHUB_REF_NAME#v}"'"/m' Cargo.toml
+      - name: Build both architectures
+        run: |
+          cargo build --release --target aarch64-apple-darwin
+          cargo build --release --target x86_64-apple-darwin
+      - name: Bundle the universal app
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          app="Jondo.app"
+          rm -rf "$app" Jondo.iconset jondo.dmg jondo-macos.zip
+          mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+          lipo -create -output "$app/Contents/MacOS/jondo" \
+            target/aarch64-apple-darwin/release/jondo \
+            target/x86_64-apple-darwin/release/jondo
+          for size in 16 32 128 256 512; do
+            mkdir -p Jondo.iconset
+            sips -z "$size" "$size" assets/icon.png \
+              --out "Jondo.iconset/icon_${size}x${size}.png" >/dev/null
+            sips -z "$((size * 2))" "$((size * 2))" assets/icon.png \
+              --out "Jondo.iconset/icon_${size}x${size}@2x.png" >/dev/null
+          done
+          iconutil -c icns Jondo.iconset -o "$app/Contents/Resources/jondo.icns"
+          cat > "$app/Contents/Info.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleName</key><string>Jondo</string>
+            <key>CFBundleDisplayName</key><string>Jondo</string>
+            <key>CFBundleIdentifier</key><string>io.github.jota_music.jondo</string>
+            <key>CFBundleExecutable</key><string>jondo</string>
+            <key>CFBundleIconFile</key><string>jondo.icns</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleShortVersionString</key><string>${version}</string>
+            <key>CFBundleVersion</key><string>${version}</string>
+            <key>NSHighResolutionCapable</key><true/>
+          </dict>
+          </plist>
+          PLIST
+          # Apple Silicon refuses a bundle with no signature at all, so the disc
+          # gets an ad-hoc one. It is still not notarized: Gatekeeper will warn.
+          codesign --force --deep --sign - "$app"
+          ditto -c -k --keepParent "$app" jondo-macos.zip
+          hdiutil create -volname Jondo -srcfolder "$app" -ov -format UDZO jondo.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: |
+            jondo.dmg
+            jondo-macos.zip
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Version from tag
+        shell: bash
+        run: |
+          sed -i "s/^version = \".*\"/version = \"${GITHUB_REF_NAME#v}\"/" Cargo.toml
+      - name: Build
+        run: cargo build --release
+      - name: Install NSIS
+        run: choco install nsis --no-progress -y
+      - name: Package the per-user installer
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp target/release/jondo.exe jondo-windows-amd64.exe
+          cat > installer.nsi <<'NSI'
+          Unicode True
+          Name "Jondo"
+          OutFile "jondo-windows-amd64-installer.exe"
+          InstallDir "$LOCALAPPDATA\Programs\Jondo"
+          RequestExecutionLevel user
+          Page directory
+          Page instfiles
+          Section "Install"
+            SetOutPath "$INSTDIR"
+            File /oname=jondo.exe "jondo-windows-amd64.exe"
+            CreateShortcut "$SMPROGRAMS\Jondo.lnk" "$INSTDIR\jondo.exe"
+            CreateShortcut "$DESKTOP\Jondo.lnk" "$INSTDIR\jondo.exe"
+            WriteUninstaller "$INSTDIR\uninstall.exe"
+          SectionEnd
+          Section "Uninstall"
+            Delete "$INSTDIR\jondo.exe"
+            Delete "$INSTDIR\uninstall.exe"
+            Delete "$SMPROGRAMS\Jondo.lnk"
+            Delete "$DESKTOP\Jondo.lnk"
+            RMDir "$INSTDIR"
+          SectionEnd
+          NSI
+          "/c/Program Files (x86)/NSIS/makensis.exe" installer.nsi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            jondo-windows-amd64-installer.exe
+            jondo-windows-amd64.exe
+          if-no-files-found: error
+
   publish:
-    needs: [linux, android]
+    needs: [linux, android, macos, windows]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -151,13 +267,18 @@ jobs:
         run: |
           set -euo pipefail
           cd release
-          sha256sum jondo.apk jondo-*.AppImage > SHA256SUMS
+          sha256sum jondo.apk jondo-*.AppImage jondo.dmg jondo-macos.zip \
+            jondo-windows-amd64-installer.exe jondo-windows-amd64.exe > SHA256SUMS
           cat SHA256SUMS
       - uses: softprops/action-gh-release@v2
         with:
           files: |
             release/jondo.apk
             release/jondo-*.AppImage
+            release/jondo.dmg
+            release/jondo-macos.zip
+            release/jondo-windows-amd64-installer.exe
+            release/jondo-windows-amd64.exe
             release/SHA256SUMS
           fail_on_unmatched_files: true
           generate_release_notes: true

@@ -40,6 +40,22 @@ jobs:
       - name: Test
         run: cargo test --all-targets
 
+  # The desktop targets the release ships for, checked on every push: a change
+  # that only compiles on Linux stays invisible until a tag otherwise.
+  platforms:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Check
+        run: cargo check --all-targets
+
   android:
     runs-on: ubuntu-24.04
     steps:
