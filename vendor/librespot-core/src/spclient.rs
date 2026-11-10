@@ -3,11 +3,10 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use crate::config::{OS, os_version};
+use crate::config::os_version;
 use crate::{
     Error, FileId, SpotifyId, SpotifyUri,
     apresolve::SocketAddress,
-    config::SessionConfig,
     dealer::protocol::TransferOptions,
     error::ErrorKind,
     protocol::{
@@ -184,12 +183,12 @@ impl SpClient {
         // on macOS and Windows. On Android and iOS we can send a platform-specific client ID and are
         // then presented with a hash cash challenge. On Linux, we have to pass the old keymaster ID.
         // We delegate most of this logic to `SessionConfig`.
-        let os = OS;
-        let client_id = match os {
-            "macos" | "windows" => self.session().client_id(),
-            os => SessionConfig::default_for_os(os).client_id,
-        };
-        client_data.client_id = client_id;
+        // The token is bound to the client id that requested it, and login5
+        // compares it with the session's client id. An Android build asking
+        // with its platform id gets a token login5 rejects for the keymaster
+        // session, so the whole client presents itself as the Linux desktop.
+        let os = "linux";
+        client_data.client_id = self.session().client_id();
 
         let connectivity_data = client_data.mut_connectivity_sdk_data();
         connectivity_data.device_id = self.session().device_id().to_string();

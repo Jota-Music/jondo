@@ -57,6 +57,11 @@ impl Session {
 
 pub(super) async fn open(device: &str, credentials: Credentials) -> Result<Client, String> {
     let config = SessionConfig {
+        // The OAuth flow and the credentials it stores are issued for the
+        // desktop client id, and login5 checks the session's id against them.
+        // Taking the per-OS default (Android ships its own id) makes every
+        // token request on a phone come back INVALID_CREDENTIALS.
+        client_id: super::CLIENT_ID.to_owned(),
         device_id: device.to_owned(),
         ..Default::default()
     };

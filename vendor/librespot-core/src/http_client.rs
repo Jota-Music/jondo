@@ -28,7 +28,7 @@ use hyper_tls::HttpsConnector;
 
 use crate::{
     Error,
-    config::{OS, os_version},
+    config::os_version,
     date::Date,
     version::{FALLBACK_USER_AGENT, VERSION_STRING, spotify_version},
 };
@@ -108,13 +108,14 @@ impl HttpClient {
         let zero_str = String::from("0");
         let os_version = os_version();
 
-        let (spotify_platform, os_version) = match OS {
-            "android" => ("Android", os_version),
-            "ios" => ("iOS", os_version),
-            "macos" => ("OSX", zero_str),
-            "windows" => ("Win32", zero_str),
-            _ => ("Linux", zero_str),
-        };
+        // The client id this build authenticates with is the desktop keymaster
+        // one. Spotify refuses that id when it arrives with a mobile user
+        // agent: the session is degraded to a free account and every login5
+        // token request comes back INVALID_CREDENTIALS, so the library never
+        // loads. go-librespot, which Jota uses on Android, presents itself as
+        // a desktop client for the same reason.
+        let _ = os_version;
+        let (spotify_platform, os_version) = ("Linux", zero_str);
 
         let user_agent_str = &format!(
             "Spotify/{} {}/{} ({})",

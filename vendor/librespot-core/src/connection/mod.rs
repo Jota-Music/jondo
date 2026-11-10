@@ -116,7 +116,12 @@ pub async fn authenticate(
     };
 
     let os = match crate::config::OS {
-        "android" => Os::OS_ANDROID,
+        // The handshake already spoofs Android as Linux, and the credentials
+        // this build stores come from the desktop client id. Declaring a
+        // mobile OS here with a desktop client id makes Spotify hand back a
+        // degraded "free" session: login5 then answers INVALID_CREDENTIALS and
+        // the library never loads.
+        "android" => Os::OS_LINUX,
         "freebsd" | "netbsd" | "openbsd" => Os::OS_FREEBSD,
         "ios" => Os::OS_IPHONE,
         "linux" => Os::OS_LINUX,
