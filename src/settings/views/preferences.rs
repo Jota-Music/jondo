@@ -524,15 +524,20 @@ pub(super) fn about(app: &mut Jondo, cx: &mut Context<Jondo>) -> AnyElement {
                     app.install_update(cx);
                     cx.notify();
                 }))
-                .child(icons::icon(
-                    if info.installable {
-                        Icon::Download
-                    } else {
-                        Icon::ExternalLink
-                    },
-                    12.0,
-                    app.binary,
-                ))
+                .child(if app.ui.updating {
+                    button::spinner(12.0, app.binary).into_any_element()
+                } else {
+                    icons::icon(
+                        if info.installable {
+                            Icon::Download
+                        } else {
+                            Icon::ExternalLink
+                        },
+                        12.0,
+                        app.binary,
+                    )
+                    .into_any_element()
+                })
                 .child(text::weighted(
                     label,
                     12.0,
