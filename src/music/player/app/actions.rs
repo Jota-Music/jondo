@@ -20,6 +20,27 @@ impl Jondo {
         }
     }
 
+    pub fn toggle_playlist(&mut self, id: &str, cx: &mut gpui::Context<Self>) {
+        if let Some(playlist) = self
+            .playlist(id, cx)
+            .filter(|playlist| !playlist.songs.is_empty())
+        {
+            self.toggle_list(&playlist.songs, cx);
+            return;
+        }
+
+        self.play_playlist(id, cx);
+    }
+
+    pub fn toggle_list(&mut self, songs: &[Song], cx: &mut gpui::Context<Self>) {
+        if self.player.read(cx).queue.same(songs) {
+            self.toggle(cx);
+            return;
+        }
+
+        self.play_list(songs.to_vec(), 0, cx);
+    }
+
     pub fn play_album(&mut self, id: &str, cx: &mut gpui::Context<Self>) {
         if let Some(album) = self.catalog.read(cx).albums.value(id).cloned() {
             if !album.tracks.is_empty() {
@@ -303,8 +324,6 @@ impl Jondo {
 
             self.play_current_at(0.0, cx);
             self.persist(cx);
-        } else {
-            self.player.update(cx, |player, _| player.stop());
         }
     }
 
@@ -377,6 +396,7 @@ impl Jondo {
                 "mode": repeat_name(repeat),
             }),
         );
+        self.persist(cx);
     }
 
     pub fn set_volume(&mut self, volume: f32, cx: &mut gpui::Context<Self>) {

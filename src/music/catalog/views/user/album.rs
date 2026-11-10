@@ -67,7 +67,7 @@ pub fn show(app: &mut Jondo, cx: &mut Context<Jondo>) -> AnyElement {
                     let tracks = tracks.clone();
                     move |app, _: &gpui::ClickEvent, _, cx| {
                         if !tracks.is_empty() {
-                            app.play_list((*tracks).clone(), 0, cx);
+                            app.toggle_list(&tracks, cx);
                             cx.notify();
                         }
                     }

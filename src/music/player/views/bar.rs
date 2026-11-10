@@ -5,8 +5,10 @@ use gpui::{
 };
 
 use crate::music::track::views::{actions, credits};
+use crate::shared::i18n::t;
 use crate::shared::music::views::cover;
-use crate::shared::ui::views::components::{button, text};
+use crate::shared::ui::views::components::paint::Scope;
+use crate::shared::ui::views::components::{button, hold, text};
 use crate::shared::ui::views::design::icons;
 use crate::shared::ui::views::design::theme;
 use crate::shell::app::{Drag, Jondo};
@@ -15,13 +17,9 @@ use crate::shell::views::menu::{Command, Item, Menu};
 use super::controls::{seek_bar, volume_control};
 
 pub fn bar(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> AnyElement {
-    if app.player.read(cx).current().is_none() {
-        return div().into_any_element();
-    }
-
     let narrow = window.viewport_size().width < theme::unit(768.0);
     let viewport = window.viewport_size().width.as_f32();
-    let gap = if narrow { 8.0 } else { 12.0 };
+    let gap = if narrow { 6.0 } else { 12.0 };
     let volume_width = if viewport >= 768.0 {
         144.0
     } else if viewport >= 500.0 {
@@ -68,6 +66,8 @@ pub fn bar(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> Any
         player_menu.clone(),
     );
     let left = leading(app, cx, song);
+    let hold_menu = player_menu.clone();
+    let entity = cx.entity();
     // Same box as the web bar: the seek line in flow, then a 12px padded row
     // around the 48px cover, with the hairline border drawn on top.
     let body = div()
@@ -82,15 +82,25 @@ pub fn bar(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> Any
                     return;
                 }
 
-                app.ui.menu = Some(Menu::context(
+                app.menu = Some(Menu::context(
                     event.position,
                     None,
                     player_menu.clone(),
                     76.0,
                 ));
-                cx.notify();
+                app.notify_shell(cx);
             }),
         )
+        .child(hold::hold(move |position, _, cx| {
+            entity.update(cx, |app, cx| {
+                if hold_menu.is_empty() {
+                    return;
+                }
+
+                app.menu = Some(Menu::context(position, None, hold_menu.clone(), 76.0));
+                app.notify_shell(cx);
+            });
+        }))
         .child(
             div()
                 .w_full()
@@ -129,7 +139,8 @@ fn controls(
         .gap(theme::unit(gap));
     if !narrow {
         right = right
-            .child(button::icon_flat(
+            .child(button::icon_flat_in(
+                Scope::Shell,
                 "bar-shuffle",
                 icons::SHUFFLE,
                 20.0,
@@ -138,14 +149,15 @@ fn controls(
                 } else {
                     theme::white(0.6)
                 },
-                32.0,
+                40.0,
                 true,
                 cx.listener(|app, _: &gpui::ClickEvent, _, cx| {
                     app.toggle_shuffle(cx);
-                    cx.notify();
+                    app.notify_shell(cx);
                 }),
             ))
-            .child(button::icon_flat(
+            .child(button::icon_flat_in(
+                Scope::Shell,
                 "bar-repeat",
                 if app.player.read(cx).repeat == crate::music::player::domain::queue::Repeat::One {
                     icons::REPEAT_1
@@ -158,16 +170,20 @@ fn controls(
                 } else {
                     theme::white(0.6)
                 },
-                32.0,
+                40.0,
                 true,
                 cx.listener(|app, _: &gpui::ClickEvent, _, cx| {
                     app.cycle_repeat(cx);
-                    cx.notify();
+                    app.notify_shell(cx);
                 }),
             ));
     }
 
-    let mut transport = div().flex().items_center().gap(theme::unit(4.0));
+    let mut transport =
+        div()
+            .flex()
+            .items_center()
+            .gap(theme::unit(if narrow { 2.0 } else { 4.0 }));
     if volume_width > 0.0 {
         transport = transport
             .child(volume_control(app, cx, volume_width, false, Drag::Volume))
@@ -175,7 +191,8 @@ fn controls(
     }
 
     transport = transport
-        .child(button::icon_flat(
+        .child(button::icon_flat_in(
+            Scope::Shell,
             "bar-prev",
             icons::SKIP_BACK,
             24.0,
@@ -190,7 +207,8 @@ fn controls(
         .child(if app.player.read(cx).loading {
             button::circle_spinner(48.0, 24.0, fill, color).into_any_element()
         } else {
-            button::circle(
+            button::circle_in(
+                Scope::Shell,
                 "bar-play",
                 if app.player.read(cx).playing {
                     icons::PAUSE
@@ -201,7 +219,7 @@ fn controls(
                 24.0,
                 fill,
                 color,
-                true,
+                has_song,
                 cx.listener(|app, _: &gpui::ClickEvent, _, cx| {
                     app.toggle(cx);
                     cx.notify();
@@ -209,7 +227,8 @@ fn controls(
             )
             .into_any_element()
         })
-        .child(button::icon_flat(
+        .child(button::icon_flat_in(
+            Scope::Shell,
             "bar-next",
             icons::SKIP_FORWARD,
             24.0,
@@ -223,14 +242,18 @@ fn controls(
         ));
     right = right.child(transport);
 
-    let mut extras = div().flex().items_center().gap(theme::unit(2.0));
+    let mut extras = div()
+        .flex()
+        .items_center()
+        .gap(theme::unit(if narrow { 0.0 } else { 2.0 }));
     if !narrow {
-        extras = extras.child(button::icon_flat(
+        extras = extras.child(button::icon_flat_in(
+            Scope::Shell,
             "bar-queue",
             icons::LIST_MUSIC,
             20.0,
             theme::white(0.6),
-            32.0,
+            40.0,
             true,
             cx.listener(|app, _: &gpui::ClickEvent, _, cx| {
                 if app.ui.queue_open {
@@ -245,24 +268,41 @@ fn controls(
     }
 
     if has_song {
-        extras = extras.child(actions::trigger(
-            cx,
+        extras = extras.child(button::icon_flat_in(
+            Scope::Shell,
             "bar-more",
-            move |_, _| (None, menu.clone()),
-            76.0,
+            icons::ELLIPSIS_VERTICAL,
+            16.0,
+            theme::white(0.6),
+            if narrow { 44.0 } else { 32.0 },
+            true,
+            cx.listener(move |app, event: &gpui::ClickEvent, _, cx| {
+                app.menu = Some(Menu::context(event.position(), None, menu.clone(), 76.0));
+                app.notify_shell(cx);
+            }),
         ));
     }
 
-    extras = extras.child(button::icon_flat(
+    let expanded = narrow && app.ui.player_open;
+    extras = extras.child(button::icon_flat_in(
+        Scope::Shell,
         "bar-expand",
-        icons::CHEVRON_UP,
+        if expanded {
+            icons::CHEVRON_DOWN
+        } else {
+            icons::CHEVRON_UP
+        },
         20.0,
         theme::white(0.6),
-        32.0,
+        if narrow { 44.0 } else { 40.0 },
         true,
         cx.listener(|app, _: &gpui::ClickEvent, window, cx| {
             if window.viewport_size().width < theme::unit(768.0) {
-                app.open_player();
+                if app.ui.player_open {
+                    app.close_player();
+                } else {
+                    app.open_player();
+                }
             } else {
                 app.ui.compact = false;
                 app.persist(cx);
@@ -280,6 +320,7 @@ fn leading(
     cx: &mut Context<Jondo>,
     song: Option<crate::shared::music::domain::Song>,
 ) -> AnyElement {
+    let empty = song.is_none();
     let left =
         div()
             .id("bar-open")
@@ -325,6 +366,7 @@ fn leading(
                         .min_w(theme::unit(0.0))
                         .flex()
                         .flex_col()
+                        .debug_selector(|| "bar-title".to_owned())
                         .child(
                             text::truncated(
                                 song.name.clone(),
@@ -347,6 +389,21 @@ fn leading(
                             ),
                         )),
                 )
+            })
+            .when(empty, |left| {
+                left.child(
+                    text::truncated(
+                        t("Nothing playing").to_owned(),
+                        14.0,
+                        theme::MUTED,
+                        theme::Weight::Medium,
+                    )
+                    .line_height(theme::unit(20.0)),
+                )
             });
     left.into_any_element()
 }
+
+#[cfg(test)]
+#[path = "bar.test.rs"]
+mod tests;

@@ -3,6 +3,7 @@ use gpui::{Context, Div, IntoElement, ParentElement, Styled, div};
 
 use crate::music::track::views::actions;
 use crate::shared::ui::views::components::button;
+use crate::shared::ui::views::components::paint::Scope;
 use crate::shared::ui::views::components::progress::{self, Bar};
 use crate::shared::ui::views::design::icons;
 use crate::shared::ui::views::design::theme;
@@ -36,6 +37,13 @@ pub(super) fn controls(
         .unwrap_or_default();
     let volume_width = if viewport >= 768.0 { 144.0 } else { 104.0 };
     let minimize = viewport >= 768.0;
+    // Below 768px the compact bar under the sheet already carries the play
+    // button and the track menu, and its volume from 500px up, so the sheet
+    // keeps only what the bar lacks.
+    let bar = viewport < 768.0;
+    // A finger aims with its pad, not its tip: the sheet's row is roomy, so the
+    // icons widen to a touch target where the bar's row cannot.
+    let touch = if bar { 44.0 } else { 28.0 };
     let fill = if has_song {
         app.accent
     } else {
@@ -53,7 +61,8 @@ pub(super) fn controls(
         )
     };
 
-    let shuffle = button::icon_button(
+    let shuffle = button::icon_button_in(
+        Scope::Shell,
         "ctrl-shuffle",
         icons::SHUFFLE,
         20.0,
@@ -62,14 +71,15 @@ pub(super) fn controls(
         } else {
             theme::white(0.6)
         },
-        28.0,
+        touch,
         true,
         cx.listener(|app, _: &gpui::ClickEvent, _, cx| {
             app.toggle_shuffle(cx);
-            cx.notify();
+            app.notify_shell(cx);
         }),
     );
-    let repeat = button::icon_button(
+    let repeat = button::icon_button_in(
+        Scope::Shell,
         "ctrl-repeat",
         if repeat == crate::music::player::domain::queue::Repeat::One {
             icons::REPEAT_1
@@ -82,17 +92,18 @@ pub(super) fn controls(
         } else {
             theme::white(0.6)
         },
-        28.0,
+        touch,
         true,
         cx.listener(|app, _: &gpui::ClickEvent, _, cx| {
             app.cycle_repeat(cx);
-            cx.notify();
+            app.notify_shell(cx);
         }),
     );
     let play = if loading {
         button::circle_spinner(44.0, 20.0, fill, color).into_any_element()
     } else {
-        button::circle(
+        button::circle_in(
+            Scope::Shell,
             "ctrl-play",
             if playing { icons::PAUSE } else { icons::PLAY },
             44.0,
@@ -123,10 +134,6 @@ pub(super) fn controls(
                 .child(shuffle)
                 .child(repeat),
         );
-    // Below 768px the compact bar under the sheet already carries the play
-    // button and the track menu, and its volume from 500px up, so the sheet
-    // keeps only what the bar lacks.
-    let bar = viewport < 768.0;
     if !bar {
         row = row.child(play);
     }
@@ -140,12 +147,13 @@ pub(super) fn controls(
     }
 
     row = row
-        .child(button::icon_button(
+        .child(button::icon_button_in(
+            Scope::Shell,
             "ctrl-queue",
             icons::LIST_MUSIC,
             20.0,
             theme::white(0.6),
-            32.0,
+            if bar { 44.0 } else { 32.0 },
             true,
             cx.listener(|app, _: &gpui::ClickEvent, _, cx| {
                 if app.ui.queue_open {
@@ -158,15 +166,18 @@ pub(super) fn controls(
             }),
         ))
         .when(has_song && !bar, |row| {
-            row.child(actions::trigger(
+            row.child(actions::trigger_in(
+                Scope::Shell,
                 cx,
                 "ctrl-more",
+                28.0,
                 move |_, _| (None, menu.clone()),
                 0.0,
             ))
         })
         .when(minimize, |row| {
-            row.child(button::icon_button(
+            row.child(button::icon_button_in(
+                Scope::Shell,
                 "ctrl-minimize",
                 icons::MINIMIZE_2,
                 20.0,
@@ -206,18 +217,13 @@ pub(super) fn seek_bar(
 
     let dragging = app.ui.drag == Some(kind);
     let accent = if enabled { app.accent } else { theme::ZINC_600 };
-    let track = if kind == Drag::Mini {
-        theme::NEUTRAL_800
-    } else {
-        progress::TRACK
-    };
     let entity = cx.entity();
     let bar = Bar::new(
         fraction,
         None,
         height,
         accent,
-        track,
+        progress::TRACK,
         thumb,
         enabled,
         dragging,
@@ -236,7 +242,7 @@ pub(super) fn seek_bar(
                     });
                 }
 
-                cx.notify();
+                app.notify_shell(cx);
             });
         },
     );
@@ -303,7 +309,8 @@ fn volume_button(app: &mut Jondo, cx: &mut Context<Jondo>, size: f32) -> impl In
         icons::VOLUME_2
     };
 
-    button::icon_flat(
+    button::icon_flat_in(
+        Scope::Shell,
         "volume-toggle",
         icon,
         size,
@@ -312,7 +319,7 @@ fn volume_button(app: &mut Jondo, cx: &mut Context<Jondo>, size: f32) -> impl In
         true,
         cx.listener(|app, _: &gpui::ClickEvent, _, cx| {
             app.toggle_mute(cx);
-            cx.notify();
+            app.notify_shell(cx);
         }),
     )
 }
@@ -343,7 +350,7 @@ fn volume_bar(
                     app.persist(cx);
                 }
 
-                cx.notify();
+                app.notify_shell(cx);
             });
         },
     )
