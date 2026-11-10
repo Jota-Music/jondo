@@ -57,12 +57,83 @@ pub(super) async fn get_bytes(
 const TRACKS_BATCH: usize = 50;
 const TRACKS_PARALLEL: usize = 8;
 
+/// Songs the session has already resolved, so the same track coming back
+/// through a playlist, an album, a search and a radio costs no round trip. The
+/// batched endpoint answers with the same record every time; only the count is
+/// bounded, because this is a cache and not an index of Spotify.
+const KNOWN_MAX: usize = 2048;
+
+fn known() -> &'static std::sync::Mutex<std::collections::HashMap<String, Song>> {
+    static KNOWN: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, Song>>> =
+        std::sync::OnceLock::new();
+    KNOWN.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+/// Splits the URIs the session already knows from the ones that still need a
+/// round trip.
+pub(super) fn split(
+    uris: &[String],
+    known: &std::collections::HashMap<String, Song>,
+) -> (std::collections::HashMap<String, Song>, Vec<String>) {
+    let mut found = std::collections::HashMap::with_capacity(uris.len());
+    let mut missing = Vec::new();
+    for uri in uris {
+        match known.get(uri) {
+            Some(song) => {
+                found.insert(uri.clone(), song.clone());
+            }
+            None => missing.push(uri.clone()),
+        }
+    }
+
+    (found, missing)
+}
+
+/// Keeps a resolved song for the rest of the session. A broken row is not kept:
+/// a failed batch has to be retried, not remembered as unavailable.
+pub(super) fn keep(known: &mut std::collections::HashMap<String, Song>, uri: &str, song: &Song) {
+    if song.broken || known.len() >= KNOWN_MAX {
+        return;
+    }
+
+    known.insert(uri.to_owned(), song.clone());
+}
+
 pub(super) async fn tracks(
     client: &reqwest::Client,
     session: &Arc<Session>,
     uris: &[String],
 ) -> Vec<Song> {
     let unique = dedupe(uris);
+    let (mut found, missing) = split(&unique, &crate::shared::kernel::app::mutex::lock(known()));
+    if missing.is_empty() {
+        return reuse(uris, &found);
+    }
+
+    let started = std::time::Instant::now();
+    let fetched = fetch(client, session, &missing).await;
+    log::info!(
+        "spotify tracks: {} in {} batches, {} from the session, {:?}",
+        missing.len(),
+        missing.len().div_ceil(TRACKS_BATCH),
+        unique.len() - missing.len(),
+        started.elapsed()
+    );
+
+    let mut cache = crate::shared::kernel::app::mutex::lock(known());
+    for (uri, song) in fetched {
+        keep(&mut cache, &uri, &song);
+        found.insert(uri, song);
+    }
+
+    reuse(uris, &found)
+}
+
+async fn fetch(
+    client: &reqwest::Client,
+    session: &Arc<Session>,
+    unique: &[String],
+) -> std::collections::HashMap<String, Song> {
     let chunks: Vec<&[String]> = unique.chunks(TRACKS_BATCH).collect();
     let permits = std::sync::Arc::new(tokio::sync::Semaphore::new(TRACKS_PARALLEL));
     let mut set = tokio::task::JoinSet::new();
@@ -101,7 +172,7 @@ pub(super) async fn tracks(
         }
     }
 
-    reuse(uris, &found)
+    found
 }
 
 pub(super) fn dedupe(uris: &[String]) -> Vec<String> {

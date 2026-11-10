@@ -13,7 +13,9 @@ pub async fn playlist(
     session: &Arc<Session>,
     id: &str,
 ) -> Result<Playlist, String> {
+    let started = std::time::Instant::now();
     let bytes = get_bytes(client, session, &format!("/playlist/v2/playlist/{id}")).await?;
+    let metadata = started.elapsed();
     let content = SelectedListContent::parse_from_bytes(&bytes)
         .map_err(|error| format!("spotify playlist: {error}"))?;
 
@@ -36,6 +38,11 @@ pub async fn playlist(
         .unwrap_or_default();
 
     let songs = tracks(client, session, &uris).await;
+    log::info!(
+        "spotify playlist {id}: metadata {metadata:?}, {} tracks in {:?}",
+        songs.len(),
+        started.elapsed()
+    );
     let cover = cover.or_else(|| songs.iter().find_map(|song| song.cover.clone()));
     let covers = songs
         .iter()

@@ -274,9 +274,12 @@ pub(super) async fn first_cover(
     session: &Arc<Session>,
     id: &str,
 ) -> Option<String> {
-    let bytes = get_bytes(client, session, &format!("/playlist/v2/playlist/{id}"))
-        .await
-        .ok()?;
+    // Only the first items are read, so the playlist is asked the way the app
+    // asks the rootlist: a window, not the whole list. Without the window the
+    // library page downloaded every playlist it wanted a cover for.
+    let path =
+        format!("/playlist/v2/playlist/{id}?decorate=revision,attributes,length&from=0&length=8");
+    let bytes = get_bytes(client, session, &path).await.ok()?;
     let content = SelectedListContent::parse_from_bytes(&bytes).ok()?;
     let uri = content
         .contents

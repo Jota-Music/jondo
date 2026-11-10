@@ -233,3 +233,35 @@ mod android_tests {
         assert!(GRADLE.contains(r#"applicationId = "com.jondo.jondo""#));
     }
 }
+
+#[test]
+fn the_session_reuses_a_track_it_already_resolved() {
+    let mut known = std::collections::HashMap::new();
+    let song = Song {
+        id: "spotify:track:a".to_owned(),
+        name: "A".to_owned(),
+        ..Default::default()
+    };
+    keep(&mut known, "spotify:track:a", &song);
+
+    let uris = ["spotify:track:a".to_owned(), "spotify:track:b".to_owned()];
+    let (found, missing) = split(&uris, &known);
+
+    assert_eq!(found.len(), 1);
+    assert_eq!(found["spotify:track:a"].name, "A");
+    assert_eq!(missing, ["spotify:track:b".to_owned()]);
+}
+
+/// A batch that failed answers with broken rows; remembering those would make
+/// one bad network moment stick for the whole session.
+#[test]
+fn a_broken_row_is_not_remembered() {
+    let mut known = std::collections::HashMap::new();
+    let broken = Song {
+        broken: true,
+        ..Default::default()
+    };
+
+    keep(&mut known, "spotify:track:a", &broken);
+    assert!(known.is_empty());
+}
