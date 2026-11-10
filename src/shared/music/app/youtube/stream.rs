@@ -6,9 +6,9 @@ use super::*;
 use super::{client::*, cookies::*, extract_playlists::*, extract_videos::*};
 use crate::shared::kernel::app::mutex;
 
-/// How long a resolved URL is trusted. YouTube hands out hours, but a short
-/// window keeps a stale URL from surfacing as a 403 mid-session.
-pub(super) const CACHED: Duration = Duration::from_secs(30 * 60);
+/// The whole resolve is bounded: three clients, two rounds and a probe each can
+/// outlive the user's patience when the network is only half there.
+const RESOLVE: Duration = Duration::from_secs(25);
 
 impl Youtube {
     pub async fn video(&self, video_id: &str) -> Result<Video, String> {
@@ -35,6 +35,7 @@ impl Youtube {
                 .and_then(Value::as_str)
                 .and_then(channel_ref),
             duration: 0,
+            official: false,
         })
     }
 
@@ -42,25 +43,44 @@ impl Youtube {
     /// song, skipping back or prefetching the next one costs no round trip.
     pub async fn stream(&self, video_id: &str) -> Result<Stream, String> {
         if let Some(stream) = self.cached(video_id) {
-            return Ok(stream);
+            // A cached URL that googlevideo now refuses to serve past the first
+            // megabyte is not a stream: re-resolve instead of handing out a
+            // link the player cannot finish.
+            if self.probe(&stream.url, &stream.agent).await {
+                return Ok(stream);
+            }
+            self.forget(video_id);
         }
 
-        let stream = self.fetch(video_id).await?;
-        self.keep(video_id, &stream);
+        self.refresh(video_id).await
+    }
+
+    /// A new URL for a stream that died mid-track: the cached one is the one
+    /// that just failed, so retrying hands out the same broken link.
+    pub async fn refresh(&self, video_id: &str) -> Result<Stream, String> {
+        let stream = tokio::time::timeout(RESOLVE, self.fetch(video_id))
+            .await
+            .map_err(|_| "YouTube took too long to answer".to_owned())??;
+        self.cache.keep(video_id, &stream);
         Ok(stream)
     }
 
     pub fn cached(&self, video_id: &str) -> Option<Stream> {
-        let streams = mutex::lock(&self.streams);
-        let (stream, at) = streams.get(video_id)?;
-        (at.elapsed() < CACHED).then(|| stream.clone())
+        self.cache.stream(video_id)
     }
 
-    fn keep(&self, video_id: &str, stream: &Stream) {
-        let now = Instant::now();
-        let mut streams = mutex::lock(&self.streams);
-        streams.retain(|_, (_, at)| now.duration_since(*at) < CACHED);
-        streams.insert(video_id.to_owned(), (stream.clone(), now));
+    /// Drops the URL that just failed. A signed URL can be revoked hours before
+    /// the expiry it advertises, and the cache would keep serving it to every
+    /// later play of the song.
+    pub fn forget(&self, video_id: &str) {
+        self.cache.forget(video_id);
+    }
+
+    /// Drops the visitor token so the next resolve scrapes a fresh one: a stale
+    /// token is what bot-checks every client.
+    pub(super) fn forget_visitor(&self) {
+        *mutex::lock(&self.visitor) = None;
+        self.cache.forget_visitor();
     }
 
     /// The visitor scrape is one round trip to the homepage. Paying it at
@@ -72,108 +92,121 @@ impl Youtube {
     async fn fetch(&self, video_id: &str) -> Result<Stream, String> {
         let mut last_error = None;
         let mut restricted = None;
-        let mut login = false;
-        for round in 0..2 {
-            let signed = round == 1;
-            if signed && (!login || !self.signed_in()) {
-                break;
-            }
+        let mut refreshed = false;
+        loop {
+            let mut login = false;
+            for round in 0..2 {
+                let signed = round == 1;
+                if signed && (!login || !self.signed_in()) {
+                    break;
+                }
 
-            let clients: &[Client] = if signed { &[WEB] } else { &CLIENTS };
-            for client in clients.iter().copied() {
-                let payload = json!({
-                    "videoId": video_id,
-                    "context": {"client": self.context(client)},
-                    "contentCheckOk": true,
-                    "racyCheckOk": true,
-                });
+                let clients: Vec<Client> = if signed { vec![WEB] } else { self.order() };
+                for client in clients {
+                    let payload = json!({
+                        "videoId": video_id,
+                        "context": {"client": self.context(client)},
+                        "contentCheckOk": true,
+                        "racyCheckOk": true,
+                    });
 
-                let value = match self.post(client, PLAYER_URL, payload, signed).await {
-                    Ok(value) => value,
-                    Err(error) => {
-                        last_error = Some(error);
+                    let value = match self.post(client, PLAYER_URL, payload, signed).await {
+                        Ok(value) => value,
+                        Err(error) => {
+                            last_error = Some(error);
+                            continue;
+                        }
+                    };
+
+                    let status = value
+                        .pointer("/playabilityStatus/status")
+                        .and_then(Value::as_str)
+                        .unwrap_or("");
+                    let reason = value
+                        .pointer("/playabilityStatus/reason")
+                        .and_then(Value::as_str)
+                        .filter(|reason| !reason.is_empty());
+                    if status == "LOGIN_REQUIRED" {
+                        login = true;
+                        if signed {
+                            restricted = Some(
+                                "YouTube did not accept the stored session for this video.".to_owned(),
+                            );
+                        } else if restricted.is_none() {
+                            restricted = Some(match reason {
+                                Some(reason) => format!("YouTube says: {reason}"),
+                                None => "YouTube asks for a signed-in session".to_owned(),
+                            });
+                        }
+
                         continue;
                     }
-                };
 
-                let status = value
-                    .pointer("/playabilityStatus/status")
-                    .and_then(Value::as_str)
-                    .unwrap_or("");
-                let reason = value
-                    .pointer("/playabilityStatus/reason")
-                    .and_then(Value::as_str)
-                    .filter(|reason| !reason.is_empty());
-                if status == "LOGIN_REQUIRED" {
-                    login = true;
-                    if signed {
-                        restricted = Some(
-                            "YouTube did not accept the stored session for this video.".to_owned(),
-                        );
-                    } else if restricted.is_none() {
-                        restricted = Some(match reason {
-                            Some(reason) => format!("YouTube says: {reason}"),
-                            None => "YouTube asks for a signed-in session".to_owned(),
-                        });
+                    if status != "OK" {
+                        if !signed && restricted.is_none() {
+                            restricted = Some(match reason {
+                                Some(reason) => format!("YouTube says: {reason}"),
+                                None => "YouTube could not play this video".to_owned(),
+                            });
+                        }
+
+                        continue;
                     }
 
-                    continue;
-                }
+                    let Some((url, duration)) = pick_audio(&value) else {
+                        if signed {
+                            restricted =
+                                Some("YouTube returned no playable audio for this video.".to_owned());
+                        } else if restricted.is_none() {
+                            restricted = Some("YouTube returned no playable audio".to_owned());
+                        }
 
-                if status != "OK" {
-                    if !signed && restricted.is_none() {
-                        restricted = Some(match reason {
-                            Some(reason) => format!("YouTube says: {reason}"),
-                            None => "YouTube could not play this video".to_owned(),
-                        });
+                        continue;
+                    };
+
+                    if !self.probe(&url, client.agent).await {
+                        last_error = Some("stream is not playable".to_owned());
+                        continue;
                     }
 
-                    continue;
+                    self.cache.remember_client(client.name);
+
+                    return Ok(Stream {
+                        url,
+                        agent: client.agent.to_owned(),
+                        duration,
+                    });
                 }
-
-                let Some((url, duration)) = pick_audio(&value) else {
-                    if signed {
-                        restricted =
-                            Some("YouTube returned no playable audio for this video.".to_owned());
-                    } else if restricted.is_none() {
-                        restricted = Some("YouTube returned no playable audio".to_owned());
-                    }
-
-                    continue;
-                };
-
-                if !self.probe(&url, client.agent).await {
-                    last_error = Some("stream is not playable".to_owned());
-                    continue;
-                }
-
-                return Ok(Stream {
-                    url,
-                    agent: client.agent.to_owned(),
-                    duration,
-                });
             }
-        }
 
-        Err(restricted
-            .or(last_error)
-            .unwrap_or_else(|| "cannot resolve audio".to_owned()))
+            // jota: a stale visitor bot-checks every client; refresh it once.
+            if login && !refreshed {
+                self.forget_visitor();
+                self.ensure_visitor().await;
+                refreshed = true;
+                last_error = None;
+                restricted = None;
+                continue;
+            }
+
+            return Err(restricted
+                .or(last_error)
+                .unwrap_or_else(|| "cannot resolve audio".to_owned()));
+        }
     }
 
+    /// A plain HEAD is what the player asks first: googlevideo URLs that only
+    /// answer a bounded Range request hand out a megabyte and then refuse the
+    /// rest, so a URL that 403s this probe is not a stream that can play. This
+    /// mirrors how Jota validates a candidate before trusting it.
     pub(super) async fn probe(&self, url: &str, agent: &str) -> bool {
-        let response = self
-            .http
+        self.http
             .head(url)
             .header(reqwest::header::USER_AGENT, agent)
-            .header(reqwest::header::RANGE, "bytes=0-1")
             .timeout(Duration::from_secs(6))
             .send()
-            .await;
-
-        match response {
-            Ok(response) => !matches!(response.status().as_u16(), 401 | 403 | 404 | 410),
-            Err(_) => false,
-        }
+            .await
+            .is_ok_and(|response| response.status().is_success())
     }
 
     pub(super) fn context(&self, client: Client) -> Value {
@@ -290,32 +323,86 @@ impl Youtube {
         Err(last_error.unwrap_or_else(|| "YouTube request failed".to_owned()))
     }
 
+    /// The visitor token and the API key, refreshed at most once per window and
+    /// never by two resolves at once: the queue prefetches in parallel, and a
+    /// homepage download per resolve is bandwidth plus a bot-check signal.
     pub(super) async fn ensure_visitor(&self) {
-        if mutex::lock(&self.visitor).is_some() {
+        if self.visitor_ready() {
             return;
         }
 
+        // The refresh lock is never taken on the request path: a slow homepage
+        // holds this, not the resolves that already have a token.
+        let _refreshing = self.refreshing.lock().await;
+
+        // A resolve that waited for the lock may have refreshed already.
+        if self.visitor_ready() {
+            return;
+        }
+
+        // What a previous run kept is as good as a fresh scrape, but only when
+        // nothing is in memory: adopting the same token again would keep it
+        // alive past the window that makes it credible.
+        if !self.has_visitor()
+            && let Some(visitor) = self.cache.visitor()
+        {
+            *mutex::lock(&self.visitor) = Some(visitor);
+            return;
+        }
+
+        match self.homepage().await {
+            Some(visitor) => {
+                self.cache.remember_visitor(&visitor);
+                *mutex::lock(&self.visitor) = Some(visitor);
+            }
+            None => {
+                // Degrade to whatever is cached and back off, so a bot-checked
+                // homepage is not hammered on every resolve.
+                let mut visitor = mutex::lock(&self.visitor);
+                let blocked = Some(Instant::now() + VISITOR_BACKOFF);
+                match visitor.as_mut() {
+                    Some(visitor) => visitor.blocked = blocked,
+                    None => {
+                        *visitor = Some(Visitor {
+                            blocked,
+                            ..Default::default()
+                        })
+                    }
+                }
+            }
+        }
+    }
+
+    fn visitor_ready(&self) -> bool {
+        let now = Instant::now();
+        mutex::lock(&self.visitor)
+            .as_ref()
+            .is_some_and(|visitor| visitor.ready(now))
+    }
+
+    fn has_visitor(&self) -> bool {
+        mutex::lock(&self.visitor).is_some()
+    }
+
+    async fn homepage(&self) -> Option<Visitor> {
         let response = self
             .http
             .get(HOMEPAGE)
             .header(reqwest::header::USER_AGENT, CLIENTS[0].agent)
             .header(reqwest::header::ACCEPT_LANGUAGE, "en-US,en;q=0.9")
             .send()
-            .await;
+            .await
+            .ok()?;
 
-        let Ok(response) = response else {
-            return;
-        };
+        let html = response.text().await.ok()?;
 
-        let Ok(html) = response.text().await else {
-            return;
-        };
-
-        let visitor = Visitor {
+        Some(Visitor {
             id: scrape(&html, "VISITOR_DATA"),
             key: scrape(&html, "INNERTUBE_API_KEY"),
-        };
-
-        *mutex::lock(&self.visitor) = Some(visitor);
+            // A page without a token still counts as read: the next resolve
+            // must not download it again to find the same nothing.
+            at: Some(Instant::now()),
+            blocked: None,
+        })
     }
 }

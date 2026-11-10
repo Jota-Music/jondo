@@ -264,9 +264,38 @@ fn the_library_page_hands_its_initial_data() {
     assert_eq!(data.pointer("/contents/a").and_then(Value::as_u64), Some(1));
 }
 
-use super::{cookies::*, extract_playlists::*, extract_videos::*};
-use crate::shared::kernel::app::mutex;
+#[test]
+fn the_shelf_marks_the_official_artist_badge() {
+    let value = json!({
+        "contents": {"sectionListRenderer": {"contents": [{"itemSectionRenderer": {"contents": [
+            {"compactVideoRenderer": {
+                "videoId": "official",
+                "title": {"runs": [{"text": "Song"}]},
+                "shortBylineText": {"runs": [{"text": "OficialArtist"}]},
+                "ownerBadges": [{"metadataBadgeRenderer": {
+                    "icon": {"iconType": "OFFICIAL_ARTIST_BADGE"},
+                    "style": "BADGE_STYLE_TYPE_VERIFIED_ARTIST",
+                }}],
+            }},
+            {"compactVideoRenderer": {
+                "videoId": "verified",
+                "title": {"runs": [{"text": "Song (Lyrics)"}]},
+                "shortBylineText": {"runs": [{"text": "7clouds"}]},
+                "ownerBadges": [{"metadataBadgeRenderer": {
+                    "icon": {"iconType": "CHECK_CIRCLE_THICK"},
+                    "style": "BADGE_STYLE_TYPE_VERIFIED",
+                }}],
+            }},
+        ]}}]}}
+    });
 
+    let videos = extract_videos(&value);
+    assert_eq!(videos.len(), 2);
+    assert!(videos[0].official);
+    assert!(!videos[1].official);
+}
+
+use super::{client::CLIENTS, cookies::*, extract_playlists::*, extract_videos::*};
 /// Which player client answers fastest. Ignored: it hits YouTube. The app asks
 /// one client per attempt, so this is the whole startup cost per track.
 #[test]
@@ -323,29 +352,48 @@ fn the_player_clients_are_measured_one_by_one() {
     }
 }
 
-/// A resolved URL is reused, and one past its window is not: a stale URL would
-/// surface as a 403 in the middle of a song.
+/// A session resumes with the client that last produced a playable stream
+/// instead of paying a player request and a probe per miss.
 #[test]
-fn a_stream_is_kept_until_its_window_closes() {
-    use crate::shared::music::domain::Stream;
+fn the_client_that_played_goes_first() {
     use crate::shared::youtube::Youtube;
-    use std::time::Instant;
 
     let youtube = Youtube::new();
-    let stream = Stream {
-        url: "https://example/audio".to_owned(),
+    assert_eq!(youtube.order()[0].name, CLIENTS[0].name);
+
+    youtube.cache.remember_client("IOS");
+    let order = youtube.order();
+    assert_eq!(order[0].name, "IOS");
+    assert_eq!(order[1].name, CLIENTS[0].name);
+    assert_eq!(order[2].name, CLIENTS[1].name);
+
+    youtube.cache.remember_client("GONE");
+    assert_eq!(youtube.order()[0].name, CLIENTS[0].name);
+}
+
+/// A resolved URL is reused, and one past its own expiry is not: a stale URL
+/// would surface as a 403 in the middle of a song.
+#[test]
+fn a_stream_is_kept_until_its_expiry() {
+    use crate::shared::music::domain::Stream;
+    use crate::shared::youtube::Youtube;
+
+    let youtube = Youtube::new();
+    let live = Stream {
+        url: "https://example/audio?expire=99999999999".to_owned(),
         agent: "test".to_owned(),
         duration: 3.0,
+    };
+    let dead = Stream {
+        url: "https://example/audio?expire=1".to_owned(),
+        ..live.clone()
     };
 
     assert!(youtube.cached("abc").is_none());
 
-    let now = Instant::now();
-    mutex::lock(&youtube.streams).insert("abc".to_owned(), (stream.clone(), now));
-    assert_eq!(youtube.cached("abc").unwrap().url, stream.url);
-
-    let stale = now - super::stream::CACHED - std::time::Duration::from_secs(1);
-    mutex::lock(&youtube.streams).insert("old".to_owned(), (stream, stale));
+    youtube.cache.keep("abc", &live);
+    youtube.cache.keep("old", &dead);
+    assert_eq!(youtube.cached("abc").unwrap().url, live.url);
     assert!(youtube.cached("old").is_none());
 }
 

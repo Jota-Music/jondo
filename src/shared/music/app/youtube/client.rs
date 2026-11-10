@@ -1,4 +1,5 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -6,9 +7,18 @@ use serde_json::{Value, json};
 
 use crate::shared::music::domain::{Channel, Playlist, Source};
 
+use super::cache::Cache;
 use super::*;
 use super::{cookies::*, extract_playlists::*, extract_videos::*};
 use crate::shared::kernel::app::mutex;
+
+/// How long a visitor token stays credible. YouTube ties it to a session that
+/// ages out, and a stale one is what a bot check answers.
+const VISITOR_TTL: Duration = Duration::from_secs(5 * 60);
+
+/// A homepage that just failed is usually a bot check: asking again on the next
+/// resolve keeps it failing, so the retry waits.
+pub(super) const VISITOR_BACKOFF: Duration = Duration::from_secs(30);
 
 #[derive(Clone, Copy)]
 pub(super) struct Client {
@@ -75,6 +85,29 @@ pub use crate::shared::music::domain::{Stream, Video};
 pub(super) struct Visitor {
     pub(super) id: String,
     pub(super) key: String,
+    /// When the homepage was last read, whatever it carried: a page without a
+    /// token must not be fetched again on every resolve.
+    pub(super) at: Option<Instant>,
+    /// A homepage that just failed is not asked again until this passes.
+    pub(super) blocked: Option<Instant>,
+}
+
+impl Visitor {
+    /// A token kept from a previous run: it is adopted as freshly read, so the
+    /// in-memory window starts now instead of at the write.
+    pub(super) fn resumed(id: &str, key: &str) -> Self {
+        Self {
+            id: id.to_owned(),
+            key: key.to_owned(),
+            at: Some(Instant::now()),
+            blocked: None,
+        }
+    }
+
+    pub(super) fn ready(&self, now: Instant) -> bool {
+        self.at.is_some_and(|at| at.elapsed() < VISITOR_TTL)
+            || self.blocked.is_some_and(|until| now < until)
+    }
 }
 
 #[derive(Default)]
@@ -85,8 +118,11 @@ pub(super) struct Session {
 pub struct Youtube {
     pub(super) http: reqwest::Client,
     pub(super) visitor: Mutex<Option<Visitor>>,
+    /// Held for the length of a homepage refresh, never on the request path:
+    /// the queue resolves in parallel and one slow fetch must not stall it.
+    pub(super) refreshing: tokio::sync::Mutex<()>,
     pub(super) session: Mutex<Option<Session>>,
-    pub(super) streams: Mutex<HashMap<String, (Stream, Instant)>>,
+    pub(super) cache: Cache,
 }
 
 impl Default for Youtube {
@@ -96,15 +132,33 @@ impl Default for Youtube {
 }
 
 impl Youtube {
+    /// Everything lives in memory: a test or a one-shot caller gets no side
+    /// effects, and no state from a previous run.
     pub fn new() -> Self {
+        Self::with_cache(None)
+    }
+
+    /// The app keeps what YouTube handed out between runs: a signed URL is
+    /// good for hours, and a visitor token saves the homepage scrape at launch.
+    /// It lives in its own folder so a backup scan of the config folder never
+    /// mistakes it for one.
+    pub fn persisted() -> Self {
+        Self::with_cache(
+            crate::shared::storage::dir().map(|dir| dir.join("cache").join("youtube.json")),
+        )
+    }
+
+    fn with_cache(path: Option<PathBuf>) -> Self {
         Self {
             http: reqwest::Client::builder()
+                .http1_only()
                 .timeout(Duration::from_secs(20))
                 .build()
                 .unwrap_or_default(),
             visitor: Mutex::new(None),
+            refreshing: tokio::sync::Mutex::new(()),
             session: Mutex::new(None),
-            streams: Mutex::new(HashMap::new()),
+            cache: Cache::load(path),
         }
     }
 
@@ -123,6 +177,22 @@ impl Youtube {
         mutex::lock(&self.session)
             .as_ref()
             .is_some_and(|session| full(&session.cookies))
+    }
+
+    /// The client that last produced a playable stream goes first: a session
+    /// that already knows which one YouTube accepts should not walk the list on
+    /// every track, paying a player request and a probe per miss.
+    pub(super) fn order(&self) -> Vec<Client> {
+        let mut clients = CLIENTS.to_vec();
+        let Some(name) = self.cache.client() else {
+            return clients;
+        };
+
+        if let Some(index) = clients.iter().position(|client| client.name == name) {
+            clients[..=index].rotate_right(1);
+        }
+
+        clients
     }
 
     pub async fn search(&self, query: &str) -> Result<Vec<Video>, String> {
@@ -259,6 +329,7 @@ impl Youtube {
 
         let signed = self.signed_in();
         let client = if signed { WEB } else { CLIENTS[0] };
+        let started = Instant::now();
 
         for page in 0..10 {
             let payload = if let Some(token) = &continuation {
@@ -338,6 +409,12 @@ impl Youtube {
 
             previous = continuation.clone();
         }
+
+        log::info!(
+            "youtube playlist {id}: {} songs in {:?}",
+            songs.len(),
+            started.elapsed()
+        );
 
         if name.is_empty() {
             name = id.clone();

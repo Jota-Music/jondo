@@ -150,6 +150,7 @@ pub(super) fn collect_videos(
                         author: author.to_owned(),
                         channel: Some(channel.to_owned()),
                         duration,
+                        official: false,
                     });
                 }
             }
@@ -222,6 +223,18 @@ pub(super) fn extract_videos(value: &Value) -> Vec<Video> {
                 .and_then(Value::as_str)
                 .map(parse_duration)
                 .unwrap_or(0);
+            let official = renderer
+                .get("ownerBadges")
+                .and_then(Value::as_array)
+                .is_some_and(|badges| {
+                    badges.iter().any(|value| {
+                        let badge = &value["metadataBadgeRenderer"];
+                        badge.pointer("/icon/iconType").and_then(Value::as_str)
+                            == Some("OFFICIAL_ARTIST_BADGE")
+                            || badge.get("style").and_then(Value::as_str)
+                                == Some("BADGE_STYLE_TYPE_VERIFIED_ARTIST")
+                    })
+                });
 
             videos.push(Video {
                 id: id.to_owned(),
@@ -229,6 +242,7 @@ pub(super) fn extract_videos(value: &Value) -> Vec<Video> {
                 author,
                 channel,
                 duration,
+                official,
             });
         }
     }

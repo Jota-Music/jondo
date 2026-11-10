@@ -1,8 +1,10 @@
+mod cache;
 mod channel;
 mod client;
 mod cookies;
 mod extract_playlists;
 mod extract_videos;
+mod ranking;
 mod stream;
 #[cfg(test)]
 #[path = "youtube.test.rs"]
@@ -11,6 +13,7 @@ mod tests;
 pub use client::Youtube;
 pub use client::{Stream, Video};
 pub use cookies::{full, parse_cookies, same};
+pub use ranking::candidates;
 
 /// A logged-out YouTube answers the library page with a shell and a `200`, so
 /// the round trip alone cannot tell a dead session from an empty account.
