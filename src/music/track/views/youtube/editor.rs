@@ -9,6 +9,7 @@ use gpui::{
 use gpui_kit::component::tooltip::Tooltip;
 
 use crate::shared::i18n::t;
+use crate::shared::ui::views::components::paint::Scope;
 use crate::shared::ui::views::components::{button, field, hover, text};
 use crate::shared::ui::views::design::icons::{self, Icon};
 use crate::shared::ui::views::design::theme;
@@ -21,21 +22,20 @@ use super::results::results;
 use super::{Mode, submit};
 
 pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> impl IntoElement {
-    if !app.ui.editor.open {
+    if !app.editor.open {
         return div().into_any_element();
     }
 
     let closing = app.ui.closing;
-    let assign = app.ui.editor.mode == Mode::Assign;
+    let assign = app.editor.mode == Mode::Assign;
     let song_name = app
-        .ui
         .editor
         .song
         .as_ref()
         .map(|song| song.name.clone())
         .unwrap_or_default();
-    let link_value = app.ui.editor.link.clone();
-    let search_value = app.ui.editor.search.clone();
+    let link_value = app.editor.link.clone();
+    let search_value = app.editor.search.clone();
     let link_field = app.field("youtube-link", &link_value, t("ID or URL"), window, cx);
     let search_field = app.field(
         "youtube-search",
@@ -45,7 +45,7 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> im
         cx,
     );
 
-    if app.ui.editor.focus {
+    if app.editor.focus {
         if assign {
             app.set_field("youtube-link", &link_value, window, cx);
             link_field.update(cx, |state, cx| {
@@ -60,7 +60,7 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> im
             });
         }
 
-        app.ui.editor.focus = false;
+        app.editor.focus = false;
     }
 
     let field = if assign { &link_field } else { &search_field };
@@ -80,7 +80,7 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> im
     let slide = if cx.reduce_motion() {
         if assign { 0.0 } else { 1.0 }
     } else {
-        app.ui.editor.slide.value(Instant::now())
+        app.editor.slide.value(Instant::now())
     };
 
     let mut row = div()
@@ -97,7 +97,7 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> im
         })
         .bg(theme::SURFACE)
         .overflow_hidden()
-        .occlude()
+        .block_mouse_except_scroll()
         .child(
             div()
                 .h_full()
@@ -106,7 +106,7 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> im
                 .child(tab(cx, Mode::Assign, 1.0 - slide, icons::LINK_2))
                 .child(tab(cx, Mode::Search, slide, icons::SEARCH_BOLD)),
         );
-    if assign && app.ui.editor.resolving {
+    if assign && app.editor.resolving {
         row = row.child(
             div()
                 .ml(theme::unit(12.0))
@@ -130,6 +130,7 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> im
     }
 
     let body_scroll = app.pane("youtube-body");
+    let top = body_scroll.clone();
     let body = div()
         .id("youtube-body")
         .flex_1()
@@ -159,7 +160,7 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> im
             .flex()
             .justify_end()
             .p(theme::unit(12.0))
-            .child(save_button(app, cx, changed(&app.ui.editor))),
+            .child(save_button(app, cx, changed(&app.editor))),
     );
 
     let panel = div()
@@ -189,6 +190,7 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> im
         panel,
     )
     .bar(app.player.read(cx).current().is_some())
+    .at_top(move || top.offset().y >= gpui::px(0.0))
     .show(window, cx)
 }
 
@@ -198,7 +200,8 @@ fn tab(cx: &mut Context<Jondo>, mode: Mode, glow: f32, icon: Icon) -> impl IntoE
         Mode::Search => t("Search YouTube"),
     };
 
-    hover::hover(
+    hover::hover_in(
+        Scope::Shell,
         gpui::ElementId::Name(format!("youtube-mode-{}", icon.name()).into()),
         true,
         move |fade| {
@@ -234,7 +237,8 @@ fn tab(cx: &mut Context<Jondo>, mode: Mode, glow: f32, icon: Icon) -> impl IntoE
 
 fn clear(cx: &mut Context<Jondo>, assign: bool) -> impl IntoElement {
     let label = t("Clear");
-    hover::hover(
+    hover::hover_in(
+        Scope::Shell,
         gpui::ElementId::Name(
             if assign {
                 "youtube-clear"
@@ -264,14 +268,14 @@ fn clear(cx: &mut Context<Jondo>, assign: bool) -> impl IntoElement {
         },
         cx.listener(move |app, _: &gpui::ClickEvent, window, cx| {
             if assign {
-                app.ui.editor.link.clear();
-                app.ui.editor.load = false;
-                app.ui.editor.resolving = false;
-                app.ui.editor.link_at = None;
+                app.editor.link.clear();
+                app.editor.load = false;
+                app.editor.resolving = false;
+                app.editor.link_at = None;
                 app.set_field("youtube-link", "", window, cx);
             } else {
-                app.ui.editor.search.clear();
-                app.ui.editor.search_at = None;
+                app.editor.search.clear();
+                app.editor.search_at = None;
                 let preview = &mut app.preview;
                 app.player.update(cx, |player, _| preview.stop(player));
                 app.set_field("youtube-search", "", window, cx);
@@ -287,7 +291,8 @@ fn clear(cx: &mut Context<Jondo>, assign: bool) -> impl IntoElement {
 fn save_button(app: &Jondo, cx: &mut Context<Jondo>, enabled: bool) -> impl IntoElement {
     let fill = app.accent;
     let color = app.binary;
-    hover::hover(
+    hover::hover_in(
+        Scope::Shell,
         "youtube-save",
         enabled,
         move |fade| {
@@ -304,7 +309,7 @@ fn save_button(app: &Jondo, cx: &mut Context<Jondo>, enabled: bool) -> impl Into
                 .child(icons::icon(icons::CHECK_BOLD, 16.0, color))
         },
         cx.listener(move |app, _: &gpui::ClickEvent, _, cx| {
-            app.ui.editor.link = app.value("youtube-link", cx);
+            app.editor.link = app.value("youtube-link", cx);
             save(app, cx);
             cx.notify();
         }),

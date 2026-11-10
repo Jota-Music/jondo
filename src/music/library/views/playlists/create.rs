@@ -31,6 +31,7 @@ pub(super) fn create(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jond
     });
 
     sheet(
+        app,
         "create-playlist",
         t("New playlist"),
         14.0,

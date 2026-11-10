@@ -22,6 +22,7 @@ pub fn queue(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> A
         && at.elapsed() >= sheet::DURATION
     {
         app.ui.queue_closing = None;
+        cx.notify();
     }
 
     if !app.ui.queue_open && app.ui.queue_closing.is_none() {
@@ -35,6 +36,7 @@ pub fn queue(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> A
     let position = (count > 0).then(|| current.min(count - 1) + 1);
     let entity = cx.entity();
     let scroll = app.scroll("queue");
+    let top = scroll.clone();
     // A scroll asked for by the handle is already queued for this layout, so
     // the pill stays hidden while it lands and cannot outlive the jump.
     let jumping = scroll.0.borrow().deferred_scroll_to_item.is_some();
@@ -143,7 +145,7 @@ pub fn queue(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> A
             .min_h(theme::unit(0.0))
             .id("queue-rows")
             .on_click(cx.listener(|app, _: &gpui::ClickEvent, _, cx| {
-                if !app.ui.selection.is_empty() {
+                if !app.selection.is_empty() {
                     app.clear_selection();
                     cx.notify();
                 }
@@ -219,5 +221,6 @@ pub fn queue(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> A
         content,
     )
     .bar(bar)
+    .at_top(move || top.0.borrow().base_handle.offset().y >= gpui::px(0.0))
     .show(window, cx)
 }

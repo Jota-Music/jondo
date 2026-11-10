@@ -22,10 +22,15 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> An
         app.ui.removing = None;
         app.ui.picker = None;
         app.ui.choice = None;
-        app.ui.editor = Default::default();
+        app.editor = Default::default();
         app.rooms_ui.confirm = None;
         app.rooms.update(cx, |rooms, _| rooms.show = false);
         app.ui.closing = None;
+        // The frame that takes the sheet down is the last of its animation,
+        // and an animation frame keeps the page cached. Ask for one more frame
+        // without motion so the route behind the scrim paints with whatever
+        // changed while it was covered.
+        cx.notify();
     }
 
     let open = app.ui.create_open
@@ -33,7 +38,7 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> An
         || app.ui.confirm.is_some()
         || app.ui.removing.is_some()
         || app.ui.picker.is_some()
-        || app.ui.editor.open;
+        || app.editor.open;
     if open {
         if app.ui.dialog_at.is_none() {
             app.ui.dialog_at = Some(Instant::now());
@@ -62,7 +67,7 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> An
         return picker(app, window, cx);
     }
 
-    if app.ui.editor.open {
+    if app.editor.open {
         return crate::music::track::views::youtube::show(app, window, cx).into_any_element();
     }
 

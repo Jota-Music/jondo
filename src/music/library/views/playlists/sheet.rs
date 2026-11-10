@@ -12,6 +12,7 @@ use crate::shell::views::sheet;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn sheet(
+    app: &Jondo,
     id: &'static str,
     title: &str,
     title_size: f32,
@@ -34,7 +35,11 @@ pub(super) fn sheet(
         .child(div().w_full().h(theme::unit(1.0)).bg(theme::BORDER))
         .child(body);
 
-    sheet::Sheet::new(
+    // The picker binds this handle to its scrolling list, so a downward pan
+    // only pulls the sheet once that list is back at the top.
+    let drift = app.panes.get(id).cloned().unwrap_or_default();
+
+    let sheet = sheet::Sheet::new(
         id,
         closing,
         |app, _, cx| {
@@ -44,7 +49,8 @@ pub(super) fn sheet(
         content,
     )
     .bar(bar)
-    .show(window, cx)
+    .at_top(move || drift.offset().y >= gpui::px(0.0));
+    sheet.show(window, cx)
 }
 
 pub(super) fn accent_button(

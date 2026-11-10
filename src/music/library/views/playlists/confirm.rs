@@ -32,6 +32,7 @@ pub(super) fn confirm(
     });
 
     sheet(
+        app,
         "confirm-delete",
         t("Delete playlist"),
         16.0,
@@ -82,6 +83,7 @@ pub(super) fn confirm_remove(
         cx.notify();
     });
     sheet(
+        app,
         "confirm-remove",
         t("Remove from playlist"),
         16.0,

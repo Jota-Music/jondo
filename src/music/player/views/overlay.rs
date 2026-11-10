@@ -19,6 +19,7 @@ pub fn overlay(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) ->
         && at.elapsed() >= sheet::DURATION
     {
         app.ui.player_closing = None;
+        cx.notify();
     }
 
     if !app.ui.player_open && app.ui.player_closing.is_none() {
@@ -29,6 +30,7 @@ pub fn overlay(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) ->
     let has_song = app.player.read(cx).current().is_some();
     let viewport = window.viewport_size();
     let scroll = app.pane("player");
+    let top = scroll.clone();
     let content = div()
         .flex()
         .flex_col()
@@ -76,5 +78,6 @@ pub fn overlay(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) ->
     )
     .mobile(true)
     .bar(true)
+    .at_top(move || top.offset().y >= gpui::px(0.0))
     .show(window, cx)
 }

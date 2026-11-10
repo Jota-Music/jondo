@@ -35,6 +35,7 @@ pub(super) fn rename(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jond
     });
 
     sheet(
+        app,
         "rename-playlist",
         t("Rename playlist"),
         18.0,

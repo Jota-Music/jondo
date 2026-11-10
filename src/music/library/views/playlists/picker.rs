@@ -59,6 +59,7 @@ pub(super) fn picker(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jond
         .map(|playlist| (playlist.id.clone(), playlist.name.clone()))
         .collect();
 
+    let picker_scroll = app.pane("playlist-picker");
     let mut rows = div().flex().flex_col();
     if playlists.is_empty() {
         rows = rows.child(
@@ -123,6 +124,7 @@ pub(super) fn picker(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jond
     }
 
     sheet(
+        app,
         "playlist-picker",
         t("Add to playlist"),
         14.0,
@@ -145,6 +147,7 @@ pub(super) fn picker(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jond
                     .max_h(theme::unit(280.0))
                     .id("picker-scroll")
                     .overflow_y_scroll()
+                    .track_scroll(&picker_scroll)
                     .child(rows),
             )
             .child(

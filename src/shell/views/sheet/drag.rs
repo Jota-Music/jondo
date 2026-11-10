@@ -13,10 +13,10 @@ pub(super) fn press(id: &ElementId, y: f32) {
             state.down_y = y;
             state.offset = 0.0;
             state.active = false;
-            state.velocity = 0.0;
-            state.moved_at = None;
+            state.track.clear();
             state.settle = None;
             state.dismissed = None;
+            state.absorb = false;
         }
     });
 }
@@ -26,8 +26,8 @@ pub(super) fn begin(id: &ElementId) {
         if let Some(state) = states.borrow_mut().get_mut(id) {
             state.active = true;
             state.offset = 0.0;
-            state.velocity = 0.0;
-            state.moved_at = Some(Instant::now());
+            state.track.clear();
+            state.track.record(Instant::now(), 0.0);
             state.settle = None;
         }
     });
@@ -44,16 +44,9 @@ pub(super) fn drag(id: &ElementId, y: f32) {
             return;
         }
 
-        let now = Instant::now();
         let offset = (y - state.down_y).max(0.0);
-        if let Some(at) = state.moved_at {
-            let dt = now.duration_since(at).as_secs_f32().clamp(0.004, 0.1);
-            let instant = (offset - state.offset) / dt;
-            state.velocity = state.velocity * 0.35 + instant * 0.65;
-        }
-
         state.offset = offset;
-        state.moved_at = Some(now);
+        state.track.record(Instant::now(), offset);
     });
 }
 
@@ -65,32 +58,30 @@ pub(super) fn release_sheet(id: &ElementId) -> bool {
         };
 
         if !state.active {
-            state.moved_at = None;
             return false;
         }
 
-        state.active = false;
         let now = Instant::now();
-        let idle = state
-            .moved_at
-            .map(|at| now.duration_since(at).as_secs_f32())
-            .unwrap_or(1.0);
-        let velocity = if idle > 0.1 {
-            0.0
-        } else {
-            state.velocity.max(0.0)
-        };
+        state.active = false;
+        let from = state.offset.max(0.0);
+        let speed = state.track.speed(now);
+        state.track.clear();
+        state.offset = 0.0;
 
-        state.velocity = 0.0;
-        state.moved_at = None;
-        if dismisses(state.offset, velocity) {
-            state.dismissed = Some(state.offset);
-            state.offset = 0.0;
+        if from <= 0.5 {
+            state.settle = None;
+            return false;
+        }
+
+        if dismisses(from, speed) {
+            state.dismissed = Some(from);
+            state.settle = None;
             true
         } else {
             state.settle = Some(Motion {
-                from: state.offset,
+                from,
                 at: now,
+                duration: settle_time(from, speed),
             });
             false
         }
@@ -99,6 +90,88 @@ pub(super) fn release_sheet(id: &ElementId) -> bool {
 
 pub(super) fn dismisses(offset: f32, velocity: f32) -> bool {
     offset > CLOSE || velocity > FLING
+}
+
+/// How long the sheet takes to come back to rest. Constant deceleration from
+/// the release speed covers `from` in `2·from / speed`, so a fast hand puts it
+/// back at once and a slow one still gets a glide instead of a snap. A release
+/// that ended in place gets the full curve: there is no speed to follow, and
+/// the distance is what the eye expects to see recovered.
+pub(super) fn settle_time(from: f32, speed: f32) -> Duration {
+    let speed = speed.abs();
+    if speed <= 1.0 {
+        return DURATION;
+    }
+
+    let seconds = 2.0 * from / speed;
+    if !seconds.is_finite() {
+        return DURATION;
+    }
+
+    Duration::from_secs_f32(seconds.clamp(MIN_SETTLE, DURATION.as_secs_f32()))
+}
+
+pub(super) fn active(id: &ElementId) -> bool {
+    STATES.with(|states| states.borrow().get(id).is_some_and(|state| state.active))
+}
+
+/// Moves an armed sheet by an incremental pan delta. The finger's first movement
+/// is reported as a scroll step, so the body drag feeds the same state the
+/// grab-strip drag uses and the two cannot disagree.
+pub(super) fn shift(id: &ElementId, delta: f32) {
+    STATES.with(|states| {
+        let mut states = states.borrow_mut();
+        let Some(state) = states.get_mut(id) else {
+            return;
+        };
+
+        if !state.active {
+            return;
+        }
+
+        state.offset = (state.offset + delta).max(0.0);
+        state.track.record(Instant::now(), state.offset);
+    });
+}
+
+/// Returns a pulled sheet to rest when the system takes the touch away.
+pub(super) fn abort(id: &ElementId) {
+    STATES.with(|states| {
+        let mut states = states.borrow_mut();
+        let Some(state) = states.get_mut(id) else {
+            return;
+        };
+
+        if !state.active {
+            return;
+        }
+
+        let from = state.offset.max(0.0);
+        state.active = false;
+        state.track.clear();
+        state.offset = 0.0;
+        state.settle = if from > 0.5 {
+            Some(Motion {
+                from,
+                at: Instant::now(),
+                duration: DURATION,
+            })
+        } else {
+            None
+        };
+    });
+}
+
+pub(super) fn absorb(id: &ElementId, on: bool) {
+    STATES.with(|states| {
+        if let Some(state) = states.borrow_mut().get_mut(id) {
+            state.absorb = on;
+        }
+    });
+}
+
+pub(super) fn absorbing(id: &ElementId) -> bool {
+    STATES.with(|states| states.borrow().get(id).is_some_and(|state| state.absorb))
 }
 
 pub(super) fn measure(id: &ElementId, height: f32) {
@@ -121,7 +194,7 @@ pub(super) fn visual(state: &State, now: Instant) -> f32 {
     }
 
     if let Some(motion) = &state.settle {
-        let t = progress(motion.at, DURATION, now);
+        let t = progress(motion.at, motion.duration, now);
         return motion.from * (1.0 - snap(t));
     }
 
