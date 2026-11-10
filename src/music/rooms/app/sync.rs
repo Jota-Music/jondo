@@ -261,7 +261,7 @@ impl Jondo {
         let youtube = self.youtube.clone();
         let known = self.store.youtube_links.get(&song.id).cloned();
         self.jobs.spawn(async move {
-            let (song, result) = resolve(youtube, song, known).await;
+            let (song, result) = resolve(youtube, song, known, false).await;
             Event::Room(Box::new(rooms::Event::Prepared {
                 token,
                 generation,
@@ -619,7 +619,7 @@ impl Jondo {
         let youtube = self.youtube.clone();
         let known = self.store.youtube_links.get(&song.id).cloned();
         self.jobs.spawn(async move {
-            let (song, result) = resolve(youtube, song, known).await;
+            let (song, result) = resolve(youtube, song, known, false).await;
             Event::Room(Box::new(rooms::Event::Snapshot {
                 token,
                 song,
