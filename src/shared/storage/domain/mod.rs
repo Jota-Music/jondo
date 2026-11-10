@@ -18,6 +18,24 @@ pub struct LocalPlaylist {
     pub modified: u64,
 }
 
+impl LocalPlaylist {
+    pub fn covers(&self) -> Vec<String> {
+        let mut covers: Vec<String> = Vec::with_capacity(4);
+        for cover in self.songs.iter().filter_map(|song| song.cover.as_deref()) {
+            if covers.iter().any(|seen| seen == cover) {
+                continue;
+            }
+
+            covers.push(cover.to_owned());
+            if covers.len() == 4 {
+                break;
+            }
+        }
+
+        covers
+    }
+}
+
 /// The session Jota stores: the account and the reusable credentials the
 /// accesspoint hands back at login. Jondo keeps the same pair, so either app can
 /// carry the other's session through the backup.
@@ -64,6 +82,8 @@ pub struct Store {
     pub spotify_device: String,
     #[serde(default)]
     pub shuffle: bool,
+    #[serde(default)]
+    pub repeat: String,
     #[serde(default)]
     pub compact: bool,
     #[serde(default)]
@@ -132,6 +152,10 @@ pub struct Store {
     pub session_pass: String,
     #[serde(default = "sync_import_default")]
     pub trim_memory: bool,
+    #[serde(default = "enabled")]
+    pub pause_on_disconnect: bool,
+    #[serde(default = "enabled")]
+    pub pause_on_focus: bool,
     #[serde(default)]
     pub saved_at: BTreeMap<String, i64>,
     #[serde(default)]
@@ -141,6 +165,10 @@ pub struct Store {
 }
 
 pub(super) fn sync_import_default() -> bool {
+    true
+}
+
+fn enabled() -> bool {
     true
 }
 
@@ -161,6 +189,7 @@ impl Default for Store {
             spotify: None,
             spotify_device: String::new(),
             shuffle: false,
+            repeat: String::new(),
             compact: false,
             always_on_top: false,
             order: Vec::new(),
@@ -197,6 +226,8 @@ impl Default for Store {
             spotify_at: 0,
             session_pass: String::new(),
             trim_memory: true,
+            pause_on_disconnect: true,
+            pause_on_focus: true,
         }
     }
 }

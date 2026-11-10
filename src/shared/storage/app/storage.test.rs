@@ -51,6 +51,30 @@ fn saved_rooms_follow_the_shelf_order() {
 }
 
 #[test]
+fn a_local_playlist_mosaic_keeps_four_distinct_covers() {
+    let song = |cover: Option<&str>| crate::shared::music::domain::Song {
+        cover: cover.map(str::to_owned),
+        ..Default::default()
+    };
+    let playlist = LocalPlaylist {
+        id: "local:one".to_owned(),
+        name: "Mix".to_owned(),
+        songs: vec![
+            song(Some("a")),
+            song(None),
+            song(Some("a")),
+            song(Some("b")),
+            song(Some("c")),
+            song(Some("d")),
+            song(Some("e")),
+        ],
+        modified: 0,
+    };
+
+    assert_eq!(playlist.covers(), ["a", "b", "c", "d"]);
+}
+
+#[test]
 fn legacy_follows_move_to_the_keyed_shape() {
     let mut store = Store::default();
     store.follows.push(Follow {
