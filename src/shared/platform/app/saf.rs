@@ -85,8 +85,14 @@ impl Saf {
     }
 
     pub fn pick(&mut self, pick: Pick, last: &str) {
+        // The launch is posted to the activity's UI thread by Java: this thread
+        // is GPUI's native event loop, and the framework refuses a picker
+        // started from anything but the activity's own thread with
+        // IllegalMonitorStateException. Everything after the launch stays on
+        // the worker, where a provider read may block for as long as it likes.
         let last = last.to_owned();
-        self.run(move || Step::Picked(worker::pick(pick, &last)));
+        let started = worker::launch(pick, &last);
+        self.run(move || Step::Picked(worker::pick(started)));
     }
 
     pub fn poll(&mut self) -> Option<Step> {
@@ -141,15 +147,24 @@ mod worker {
         }
     }
 
-    pub fn pick(pick: Pick, last: &str) -> Result<Choice, String> {
-        let answer = match pick {
-            Pick::Folder => call("folder", None)?,
-            Pick::Document => call("pick", Some(last))?,
-            Pick::Create => call("create", Some(last))?,
-        };
+    /// Starts the picker through Java, which posts the launch to the activity's
+    /// UI thread, and answers empty when the picker is on its way.
+    pub fn launch(pick: Pick, last: &str) -> Result<Option<String>, String> {
+        match pick {
+            Pick::Folder => call("folder", None),
+            Pick::Document => call("pick", Some(last)),
+            Pick::Create => call("create", Some(last)),
+        }
+    }
 
-        let Some(answer) = answer else {
-            return Ok(Choice::default());
+    pub fn pick(started: Result<Option<String>, String>) -> Result<Choice, String> {
+        let started = started?;
+
+        // The picker opens now and answers when the user is done, so a non-empty
+        // answer here is the launch itself failing.
+        let answer = match started.filter(|answer| !answer.is_empty()) {
+            Some(answer) => answer,
+            None => wait()?,
         };
 
         let value = parse(&answer)?;
@@ -186,6 +201,25 @@ mod worker {
         }
 
         Ok(choice)
+    }
+
+    /// Polls for the picker's answer. Blocking on it is not an option: the wait
+    /// needs a monitor this platform does not give a native thread.
+    fn wait() -> Result<String, String> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(300);
+        loop {
+            if let Some(answer) = call("take", None)?
+                && !answer.is_empty()
+            {
+                return Ok(answer);
+            }
+
+            if std::time::Instant::now() >= deadline {
+                return Err("The picker did not answer".to_owned());
+            }
+
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
     }
 
     fn meta(value: &Value) -> Meta {

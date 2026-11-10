@@ -15,8 +15,6 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 
 /**
  * SAF document access for the backup document: pick a location, stage the
@@ -29,9 +27,11 @@ import java.util.concurrent.TimeUnit;
  * {@code outgoing.json}, and that is streamed back with {@code "wt"} so a
  * shorter document cannot keep the previous tail.
  *
- * <p>Every method is blocking on purpose: Rust calls them from a worker thread,
- * never from the UI thread. A picker answer is delivered by
- * {@link MainActivity#onActivityResult} into {@link #picked}.
+ * <p>Every document call is blocking on purpose: Rust runs it on a worker
+ * thread, never on GPUI's event loop. Only the picker launch is posted to the
+ * activity's own UI thread, where the framework accepts an activity start. A
+ * picker answer is delivered by {@link MainActivity#onActivityResult} into
+ * {@link #picked}.
  */
 public final class SyncDocuments {
     private static final String TAG = "SyncDocuments";
@@ -46,44 +46,102 @@ public final class SyncDocuments {
     private static final String INCOMING = "incoming.json";
     private static final String OUTGOING = "outgoing.json";
 
-    private static volatile CountDownLatch latch;
+    /** Which picker the pending answer belongs to. */
+    private static final int FOLDER = 0;
+    private static final int PICK = 1;
+    private static final int CREATE = 2;
+
+    /** Null while a picker is open, empty when it was cancelled, else the URI. */
     private static volatile String picked;
+    private static volatile int kind;
+
+    /** A launch that failed on the UI thread, answered by the next {@link #take}. */
+    private static volatile String failed;
 
     private SyncDocuments() {}
 
     /**
-     * Open the system folder picker and answer the backup document inside the
-     * chosen folder, creating it when the folder holds none. An empty answer is
-     * the user cancelling.
+     * Open the system folder picker. The document inside the chosen folder is
+     * answered by {@link #take}, which creates it when the folder holds none.
      *
      * <p>The picker is a tree, not a document: it lists every DocumentsProvider
      * (Drive, Dropbox, OneDrive and local storage), and the persistable grant
      * taken over the tree is what keeps the document inside it readable later.
      */
     public static String folder(Activity activity) {
-        String tree = launch(activity, new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+        return start(activity, FOLDER, new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
                 .addFlags(Intent.FLAG_GRANT_PREFIX_URI_PERMISSION));
-        if (tree.isEmpty()) return "";
-        return resolve(activity, Uri.parse(tree));
     }
 
     /**
-     * Open the system document picker on an existing backup and answer it. A tree
-     * picker cannot reach Drive, whose provider announces no tree support, so the
-     * cloud is reached one document at a time.
+     * Open the system document picker on an existing backup. A tree picker
+     * cannot reach Drive, whose provider announces no tree support, so the cloud
+     * is reached one document at a time.
      */
     public static String pick(Activity activity, String last) {
-        String uri = launch(activity, document(activity, Intent.ACTION_OPEN_DOCUMENT, last));
-        if (uri.isEmpty()) return "";
-        return answer(activity, uri, false);
+        return start(activity, PICK, document(activity, Intent.ACTION_OPEN_DOCUMENT, last));
     }
 
-    /** Create the backup document through the system picker and answer it. */
+    /** Create the backup document through the system picker. */
     public static String create(Activity activity, String last) {
-        String uri = launch(activity, document(activity, Intent.ACTION_CREATE_DOCUMENT, last)
+        return start(activity, CREATE, document(activity, Intent.ACTION_CREATE_DOCUMENT, last)
                 .putExtra(Intent.EXTRA_TITLE, BACKUP));
-        if (uri.isEmpty()) return "";
-        return answer(activity, uri, true);
+    }
+
+    /**
+     * The pending pick's answer, consumed once. Empty while the picker is still
+     * open, {@code {"uri":""}} when it was cancelled, an error object when the
+     * provider refused, else the usual answer.
+     *
+     * <p>The launch never blocks: the answer is polled from Rust instead, like
+     * the rest of the document calls.
+     */
+    public static String take(Activity activity) {
+        String failure = failed;
+        if (failure != null) {
+            failed = null;
+            picked = null;
+            return failure;
+        }
+
+        String uri = picked;
+        if (uri == null) return "";
+        picked = null;
+        try {
+            if (uri.isEmpty()) return "{\"uri\":\"\"}";
+            if (kind == FOLDER) return resolve(activity, Uri.parse(uri));
+            return answer(activity, uri, kind == CREATE);
+        } catch (RuntimeException e) {
+            Log.e(TAG, "picker answer failed", e);
+            return error(String.valueOf(e));
+        }
+    }
+
+    /**
+     * Starts the picker and answers {@code ""} when it is on its way.
+     *
+     * <p>The launch is posted to the activity's UI thread: Rust calls this from
+     * GPUI's native event loop, and the framework refuses a picker started from
+     * any other thread with {@link IllegalMonitorStateException}. A launch that
+     * fails there is kept for {@link #take}, which runs on the caller's worker.
+     */
+    private static String start(Activity activity, int which, Intent intent) {
+        if (activity == null) return error("no activity");
+        picked = null;
+        failed = null;
+        kind = which;
+        Intent request = intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+                | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        activity.runOnUiThread(() -> {
+            try {
+                activity.startActivityForResult(request, PICK_REQUEST);
+            } catch (RuntimeException e) {
+                Log.e(TAG, "picker failed", e);
+                failed = error(String.valueOf(e));
+            }
+        });
+        return "";
     }
 
     private static Intent document(Activity activity, String action, String last) {
@@ -330,36 +388,9 @@ public final class SyncDocuments {
         }
     }
 
-    private static String launch(Activity activity, Intent intent) {
-        if (activity == null) return "";
-        latch = new CountDownLatch(1);
-        picked = null;
-        Intent request = intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
-                | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
-        CountDownLatch waiting = latch;
-        activity.runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                activity.startActivityForResult(request, PICK_REQUEST);
-            }
-        });
-        try {
-            // A picker still open when the activity is recreated never answers, and
-            // the worker thread waiting on this call must not hang forever.
-            if (!waiting.await(300, TimeUnit.SECONDS)) {
-                Log.w(TAG, "picker did not answer");
-                return "";
-            }
-        } catch (InterruptedException ignored) {
-        }
-        return picked != null ? picked : "";
-    }
-
     /** Result of the picker, forwarded by MainActivity.onActivityResult. */
     static void picked(Activity activity, int requestCode, int resultCode, Intent data) {
         if (requestCode != PICK_REQUEST) return;
-        CountDownLatch waiting = latch;
         try {
             if (activity != null && resultCode == Activity.RESULT_OK
                     && data != null && data.getData() != null) {
@@ -371,10 +402,12 @@ public final class SyncDocuments {
                 } catch (Exception ignored) {
                 }
                 picked = uri.toString();
+            } else {
+                picked = "";
             }
         } catch (Exception e) {
             Log.e(TAG, "picked failed", e);
+            picked = "";
         }
-        if (waiting != null) waiting.countDown();
     }
 }
