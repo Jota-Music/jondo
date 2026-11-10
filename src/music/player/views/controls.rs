@@ -51,13 +51,14 @@ pub(super) fn controls(
     };
 
     let color = if has_song { app.binary } else { theme::MUTED };
-    let (shuffle, repeat, loading, playing) = {
+    let (shuffle, repeat, loading, playing, paused) = {
         let player = app.player.read(cx);
         (
             player.queue.shuffle,
             player.repeat,
-            player.loading,
+            player.busy(),
             player.playing,
+            player.paused,
         )
     };
 
@@ -105,7 +106,11 @@ pub(super) fn controls(
         button::circle_in(
             Scope::Shell,
             "ctrl-play",
-            if playing { icons::PAUSE } else { icons::PLAY },
+            if playing || paused {
+                icons::PAUSE
+            } else {
+                icons::PLAY
+            },
             44.0,
             20.0,
             fill,

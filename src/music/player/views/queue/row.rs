@@ -309,7 +309,7 @@ fn artwork(app: &Jondo, art: gpui::AnyElement, current: bool, cx: &gpui::App) ->
                     .justify_center()
                     .rounded(theme::unit(6.0))
                     .bg(theme::black(0.6))
-                    .child(if app.player.read(cx).loading {
+                    .child(if app.player.read(cx).busy() {
                         icons::spinning(icons::LOADER, 25.0, app.accent).into_any_element()
                     } else {
                         icons::icon(

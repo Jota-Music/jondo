@@ -365,7 +365,8 @@ pub(super) fn disc(app: &mut Jondo, cx: &mut Context<Jondo>, size: f32, enabled:
     });
     let dragging = app.ui.drag == Some(Drag::Disc);
     let playing = app.player.read(cx).playing;
-    let loading = app.player.read(cx).loading;
+    let paused = app.player.read(cx).paused;
+    let loading = app.player.read(cx).busy();
     let binary = app.binary;
 
     div()
@@ -476,7 +477,11 @@ pub(super) fn disc(app: &mut Jondo, cx: &mut Context<Jondo>, size: f32, enabled:
                     button::circle_in(
                         Scope::Shell,
                         "disc-play",
-                        if playing { icons::PAUSE } else { icons::PLAY },
+                        if playing || paused {
+                            icons::PAUSE
+                        } else {
+                            icons::PLAY
+                        },
                         48.0,
                         24.0,
                         if enabled { accent } else { theme::ZINC_700 },

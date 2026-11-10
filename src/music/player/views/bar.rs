@@ -204,13 +204,13 @@ fn controls(
                 cx.notify();
             }),
         ))
-        .child(if app.player.read(cx).loading {
+        .child(if app.player.read(cx).busy() {
             button::circle_spinner(48.0, 24.0, fill, color).into_any_element()
         } else {
             button::circle_in(
                 Scope::Shell,
                 "bar-play",
-                if app.player.read(cx).playing {
+                if app.player.read(cx).playing || app.player.read(cx).paused {
                     icons::PAUSE
                 } else {
                     icons::PLAY
