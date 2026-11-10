@@ -71,7 +71,10 @@ pub(super) fn run_decoder(shared: Arc<Shared>, commands: mpsc::Receiver<Command>
             } => {
                 if let Err(error) = decode(&shared, &commands, &url, &agent, start, epoch) {
                     log::warn!("playback stopped: {error}");
-                    shared.eos.store(true, Ordering::SeqCst);
+                    if shared.epoch.load(Ordering::SeqCst) == epoch {
+                        shared.playing.store(false, Ordering::SeqCst);
+                        *mutex::lock(&shared.failure) = Some(error);
+                    }
                 }
             }
             Command::Stop => {

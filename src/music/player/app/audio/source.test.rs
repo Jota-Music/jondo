@@ -118,55 +118,113 @@ fn open(server: &Server, chunk: usize) -> HttpSource {
     HttpSource::open(&server.url, "test", chunk as u64).expect("open")
 }
 
+/// A server that refuses the range the way a revoked URL does: 403, always.
+fn denied() -> (String, Arc<AtomicU64>) {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("refusing server");
+    let url = format!("http://{}/audio", listener.local_addr().unwrap());
+    let requests = Arc::new(AtomicU64::new(0));
+    let hits = requests.clone();
+
+    thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let hits = hits.clone();
+            thread::spawn(move || {
+                let Ok(clone) = stream.try_clone() else {
+                    return;
+                };
+
+                let mut reader = BufReader::new(clone);
+                let mut line = String::new();
+                loop {
+                    line.clear();
+                    if reader.read_line(&mut line).is_err() || line == "\r\n" || line.is_empty() {
+                        break;
+                    }
+                }
+
+                hits.fetch_add(1, Ordering::SeqCst);
+                let _ = stream.write_all(
+                    b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                );
+            });
+        }
+    });
+
+    (url, requests)
+}
+
+/// A revoked URL answers 403 and never recovers: asking three times only
+/// delays the re-resolve that actually plays the song.
+#[test]
+fn a_refused_range_is_not_retried() {
+    let (url, requests) = denied();
+    let error = match HttpSource::open(&url, "test", 128 * 1024) {
+        Ok(_) => panic!("a 403 opened a stream"),
+        Err(error) => error,
+    };
+    println!("{error} after {} requests", requests.load(Ordering::SeqCst));
+
+    assert_eq!(
+        requests.load(Ordering::SeqCst),
+        1,
+        "a refused range was asked again"
+    );
+}
+
 fn first_read(source: &mut HttpSource) -> usize {
     let mut buffer = [0u8; PART];
     source.read(&mut buffer).expect("first read")
 }
 
-/// The decoder cannot read one byte until the whole first chunk has landed:
-/// the startup wait grows with the chunk, not with what playback needs.
+/// The buffer is a window around the read position, not the file: a two-hour
+/// stream costs the same memory as a short one.
 #[test]
-fn the_first_read_waits_for_a_whole_chunk() {
-    for chunk in [MB / 8, MB / 4, MB / 2] {
-        let server = Server::start(8 * MB, FAST, Duration::ZERO);
-        let mut source = open(&server, chunk);
+fn the_buffer_is_a_window_around_the_read_position() {
+    let server = Server::start(64 * MB, FAST, Duration::ZERO);
+    let source = open(&server, 128 * 1024);
+    let cache = mutex::lock(&source.cache);
 
-        assert_eq!(first_read(&mut source), PART);
+    assert_eq!(cache.data.len(), CACHE_WINDOW * 128 * 1024);
+    assert_eq!(cache.slots.len(), CACHE_WINDOW);
+}
 
-        let served = server.served.load(Ordering::SeqCst);
-        let played = first_read(&mut source) as u64;
-        assert_eq!(played, PART as u64);
+/// Reading past the window recycles slots; the offset arithmetic has to keep
+/// handing out the bytes at the read position, not the slot's.
+#[test]
+fn reads_stay_correct_across_the_window() {
+    let chunk = 128 * 1024;
+    let server = Server::start(8 * MB, FAST, Duration::ZERO);
+    let mut source = open(&server, chunk);
+
+    let mut buffer = vec![0u8; PART];
+    let mut total = 0usize;
+    while total < CACHE_WINDOW * 3 * chunk {
+        let read = source.read(&mut buffer).expect("read");
+        assert!(read > 0, "read {total} returned nothing");
         assert!(
-            served >= chunk as u64 - PART as u64,
-            "chunk {chunk}: only {served} bytes served before the first read"
+            buffer[..read].iter().all(|byte| *byte == 0x5a),
+            "wrong bytes at {total}"
         );
-        assert!(
-            served < chunk as u64 + 16 * PART as u64,
-            "chunk {chunk}: {served} bytes served, more than the chunk plus one prefetch"
-        );
-        println!(
-            "chunk {:>4} KB -> first read after {served} bytes",
-            chunk / 1024
-        );
+        total += read;
     }
 }
 
-/// A smaller chunk is not free: it costs one request per chunk. The first read
-/// is the chunk, and nothing else, so the wait is `chunk / bandwidth`.
+/// The first byte waits `chunk / bandwidth`, and the chunk is the only thing
+/// that wait depends on: nothing else is read before the decoder starts.
 #[test]
-fn the_optimal_chunk_is_the_one_that_fits_the_bandwidth() {
+fn the_first_chunk_is_the_startup_wait() {
     let rate = MB as u64;
     for chunk in [64 * 1024, 128 * 1024, 512 * 1024] {
         let server = Server::start(8 * MB, rate, Duration::ZERO);
-        let mut source = open(&server, chunk);
-
         let started = Instant::now();
-        first_read(&mut source);
+        let mut source = open(&server, chunk);
         let wait = started.elapsed();
+        first_read(&mut source);
 
         let expected = Duration::from_secs_f64(chunk as f64 / rate as f64);
         println!(
-            "chunk {:>4} KB -> {:>8.1} ms to first read (chunk/bandwidth {:>6.1} ms)",
+            "chunk {:>4} KB -> {:>8.1} ms to first byte (chunk/bandwidth {:>6.1} ms)",
             chunk / 1024,
             wait.as_secs_f64() * 1000.0,
             expected.as_secs_f64() * 1000.0
@@ -180,28 +238,64 @@ fn the_optimal_chunk_is_the_one_that_fits_the_bandwidth() {
     }
 }
 
-/// Startup opens the stream twice: one request only to learn the length, then
-/// the chunk itself. With a real round trip that is two waits in series.
+/// Startup pays one round trip: the first chunk is the opening request and its
+/// answer carries the length, so no second request is spent learning it.
 #[test]
-fn the_opening_request_is_a_second_round_trip() {
+fn the_opening_request_fetches_the_first_chunk() {
+    let chunk = 128 * 1024;
     let server = Server::start(8 * MB, FAST, Duration::from_millis(150));
     let started = Instant::now();
-    let mut source = open(&server, 128 * 1024);
+    let mut source = open(&server, chunk);
     let opened = started.elapsed();
-    first_read(&mut source);
-    let playing = started.elapsed();
     let requests = server.requests.load(Ordering::SeqCst);
 
     println!(
-        "open {:>6.1} ms, first read {:>6.1} ms, {requests} requests",
+        "open {:>6.1} ms, {requests} request, {} bytes",
         opened.as_secs_f64() * 1000.0,
-        playing.as_secs_f64() * 1000.0
+        server.served.load(Ordering::SeqCst)
     );
 
-    assert_eq!(requests, 2, "startup opened the stream more than twice");
+    assert_eq!(requests, 1, "startup opened the stream more than once");
     assert!(
-        playing >= Duration::from_millis(300),
-        "startup {playing:?} paid less than two delayed round trips"
+        opened >= Duration::from_millis(150),
+        "startup {opened:?} skipped the round trip"
+    );
+    assert!(server.served.load(Ordering::SeqCst) >= chunk as u64);
+    assert_eq!(first_read(&mut source), PART);
+}
+
+/// The worker fills the window around the read position and keeps it filled as
+/// the decoder moves: a chunk that arrived early must not stop the chain, or
+/// every other chunk is fetched while the decoder waits.
+#[test]
+fn the_reader_keeps_the_window_ahead_in_memory() {
+    let chunk = 128 * 1024;
+    let delay = Duration::from_millis(100);
+    let server = Server::start(8 * MB, FAST * 4, delay);
+    let mut source = open(&server, chunk);
+
+    first_read(&mut source);
+    thread::sleep(delay * 8);
+    let ahead = (1..CACHE_WINDOW as u64)
+        .filter(|index| ready(&source.cache, *index))
+        .count();
+    println!("{ahead} chunks ahead of the decoder after one read");
+    assert_eq!(
+        ahead,
+        CACHE_WINDOW - 1,
+        "the worker did not fill the window ahead"
+    );
+
+    let mut buffer = vec![0u8; PART];
+    while source.position < chunk as u64 + PART as u64 {
+        let read = source.read(&mut buffer).expect("read");
+        assert!(read > 0, "stream ended before the second chunk");
+    }
+    thread::sleep(delay * 8);
+
+    assert!(
+        ready(&source.cache, CACHE_WINDOW as u64),
+        "the window stopped moving with the decoder"
     );
 }
 

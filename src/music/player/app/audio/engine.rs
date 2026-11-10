@@ -33,6 +33,7 @@ pub(super) struct Shared {
     pub(super) ended: AtomicBool,
     pub(super) seeking: AtomicBool,
     pub(super) epoch: AtomicU64,
+    pub(super) failure: Mutex<Option<String>>,
 }
 
 impl Shared {
@@ -72,6 +73,7 @@ impl Engine {
             ended: AtomicBool::new(false),
             seeking: AtomicBool::new(false),
             epoch: AtomicU64::new(0),
+            failure: Mutex::new(None),
         });
 
         let stream = build_stream(&device, &config, sample_format, shared.clone())?;
@@ -103,6 +105,7 @@ impl Engine {
         self.shared.ended.store(false, Ordering::SeqCst);
         self.shared.seeking.store(false, Ordering::SeqCst);
         self.shared.playing.store(true, Ordering::SeqCst);
+        *mutex::lock(&self.shared.failure) = None;
         let _ = self.commands.send(Command::Load {
             url: url.to_owned(),
             agent: agent.to_owned(),
@@ -166,6 +169,12 @@ impl Engine {
 
     pub fn take_ended(&self) -> bool {
         self.shared.ended.swap(false, Ordering::SeqCst)
+    }
+
+    /// The reason the decoder gave up on the stream, if it did. A failure is
+    /// not an end: the caller decides whether to refetch or skip.
+    pub fn take_failure(&self) -> Option<String> {
+        mutex::lock(&self.shared.failure).take()
     }
 }
 
