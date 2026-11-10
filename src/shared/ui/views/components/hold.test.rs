@@ -69,3 +69,49 @@ fn a_long_press_outside_the_trigger_is_ignored(cx: &mut TestAppContext) {
 
     assert_eq!(hits.get(), 0);
 }
+
+/// A sheet opens over the row that carries the hold, and the modal occludes
+/// it. The press still reaches the window listener, so the trigger has to be
+/// asked whether it is the surface under the finger before opening a menu
+/// the sheet is covering.
+#[gpui::test]
+fn a_long_press_on_a_covered_trigger_opens_nothing(cx: &mut TestAppContext) {
+    let hits = Rc::new(Cell::new(0));
+    let (_, cx) = cx.add_window_view({
+        let hits = hits.clone();
+        move |_, _| Covered { hits }
+    });
+    cx.run_until_parked();
+
+    let center = cx
+        .debug_bounds("hold-target")
+        .expect("the trigger paints")
+        .center();
+    press(cx, center);
+
+    assert_eq!(hits.get(), 0);
+}
+
+struct Covered {
+    hits: Rc<Cell<usize>>,
+}
+
+impl Render for Covered {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        let hits = self.hits.clone();
+        div()
+            .relative()
+            .size_full()
+            .child(
+                div()
+                    .debug_selector(|| "hold-target".to_owned())
+                    .absolute()
+                    .left_0()
+                    .top_0()
+                    .w(px(200.0))
+                    .h(px(80.0))
+                    .child(hold(move |_, _, _| hits.set(hits.get() + 1))),
+            )
+            .child(div().absolute().inset_0().occlude())
+    }
+}

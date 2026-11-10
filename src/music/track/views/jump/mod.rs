@@ -127,6 +127,7 @@ pub fn pill(
         .border_color(theme::BORDER)
         .shadow_lg()
         .cursor(gpui::CursorStyle::PointingHand)
+        .block_mouse_except_scroll()
         .hover(|this| this.bg(theme::ZINC_800))
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .tooltip(|window, cx| Tooltip::new(t("Jump to current song")).build(window, cx))

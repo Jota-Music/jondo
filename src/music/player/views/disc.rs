@@ -215,11 +215,11 @@ impl Element for Ring {
 
         if self.enabled {
             let area = hitbox.clone();
-            window.on_mouse_event(move |event: &MouseMoveEvent, phase, _, cx| {
+            window.on_mouse_event(move |event: &MouseMoveEvent, phase, window, cx| {
                 if !phase.bubble() {
                     return;
                 }
-                let over = area.contains(&event.position) && on_ring(event.position);
+                let over = area.is_hovered(window) && on_ring(event.position);
                 if OVER_RING.with(|state| state.replace(over)) != over {
                     paint::paint(Scope::Shell, cx);
                 }
@@ -267,7 +267,12 @@ impl Element for Ring {
                 }
 
                 if event.phase == TouchPhase::Started {
-                    if !area.contains(&event.start_position) || !on_ring(event.start_position) {
+                    // A sheet over the disc covers it without moving it, so
+                    // the ring must be asked whether it is still the surface
+                    // under the finger, not just whether it contains it.
+                    if !area.is_hovered_at(event.start_position, window)
+                        || !on_ring(event.start_position)
+                    {
                         return;
                     }
 

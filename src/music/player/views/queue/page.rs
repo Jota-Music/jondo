@@ -124,6 +124,7 @@ pub fn queue(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> A
             let song = app.player.read(cx).queue.songs.get(current)?.clone();
             Some(
                 jump::pill(app, "queue-jump", &song, above)
+                    .debug_selector(|| "queue-jump".to_owned())
                     .on_click(cx.listener(move |app, _: &gpui::ClickEvent, _, cx| {
                         cx.stop_propagation();
                         app.scroll("queue")
