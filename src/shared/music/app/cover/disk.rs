@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use sha2::{Digest, Sha256};
 
@@ -114,9 +115,11 @@ pub(super) fn write_disk(url: &str, thumb: &image::RgbaImage) {
         return;
     };
 
-    if let Some(dir) = path.parent()
-        && let Err(error) = fs::create_dir_all(dir)
-    {
+    let Some(dir) = path.parent() else {
+        return;
+    };
+
+    if let Err(error) = fs::create_dir_all(dir) {
         log::warn!("cannot create {}: {error}", dir.display());
         return;
     }
@@ -136,5 +139,21 @@ pub(super) fn write_disk(url: &str, thumb: &image::RgbaImage) {
 
     if let Err(error) = fs::write(&path, buffer) {
         log::warn!("cannot save {}: {error}", path.display());
+        return;
+    }
+
+    if due(WRITTEN.fetch_add(1, Ordering::Relaxed) + 1) {
+        crate::shared::storage::library::trim(dir, DISK_LIMIT);
     }
 }
+
+/// The disk cache is capped when the app starts, but a session can outlive many
+/// launches. Every so many new covers the cap is applied again, from the worker
+/// that wrote it, so a folder never grows past it between restarts.
+pub(super) const TRIM_EVERY: usize = 32;
+
+pub(super) fn due(written: usize) -> bool {
+    written.is_multiple_of(TRIM_EVERY)
+}
+
+static WRITTEN: AtomicUsize = AtomicUsize::new(0);

@@ -58,3 +58,11 @@ fn a_cover_reaches_the_atlas_in_bgra() {
     image.put_pixel(0, 0, image::Rgba([1, 2, 3, 4]));
     assert_eq!(to_bgra(image).get_pixel(0, 0), &image::Rgba([3, 2, 1, 4]));
 }
+
+#[test]
+fn the_disk_cap_comes_back_every_so_many_covers() {
+    assert!(!due(1));
+    assert!(!due(TRIM_EVERY - 1));
+    assert!(due(TRIM_EVERY));
+    assert!(due(TRIM_EVERY * 2));
+}
