@@ -165,7 +165,6 @@ impl Jondo {
 
     #[cfg(target_os = "android")]
     pub(crate) fn tick_android(&mut self, cx: &mut gpui::Context<Self>) -> bool {
-        crate::shell::app::platform::media::sync(self, cx);
         if let Some(step) = self.saf.poll() {
             self.step(step, cx);
             return true;

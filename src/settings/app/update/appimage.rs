@@ -3,6 +3,12 @@ use std::os::unix::process::CommandExt as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+/// Whether this process runs from an AppImage, the only Linux build that can
+/// replace itself.
+pub(super) fn native() -> bool {
+    std::env::var_os("APPIMAGE").is_some_and(|path| !path.is_empty())
+}
+
 /// The running AppImage, following symlinks so an update replaces the real
 /// file and not the link that points at it.
 fn appimage() -> Result<PathBuf, String> {

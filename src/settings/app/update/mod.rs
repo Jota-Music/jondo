@@ -11,6 +11,8 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 enum Channel {
     AppImage,
     Android,
+    Macos,
+    Windows,
     External,
 }
 
@@ -31,7 +33,19 @@ pub struct Info {
 fn channel() -> Channel {
     if cfg!(target_os = "android") {
         Channel::Android
-    } else if cfg!(target_os = "linux") && std::env::var_os("APPIMAGE").is_some() {
+    } else if cfg!(target_os = "macos") {
+        if platform::native() {
+            Channel::Macos
+        } else {
+            Channel::External
+        }
+    } else if cfg!(target_os = "windows") {
+        if platform::native() {
+            Channel::Windows
+        } else {
+            Channel::External
+        }
+    } else if cfg!(target_os = "linux") && platform::native() {
         Channel::AppImage
     } else {
         Channel::External
@@ -108,6 +122,8 @@ fn matches(channel: Channel, name: &str) -> bool {
                 && contains_arch(&name, std::env::consts::ARCH)
         }
         Channel::Android => name == "jondo.apk",
+        Channel::Macos => name == "jondo-macos.zip",
+        Channel::Windows => name == "jondo-windows-amd64-installer.exe",
         Channel::External => false,
     }
 }
@@ -311,7 +327,20 @@ mod platform;
 #[path = "appimage.rs"]
 mod platform;
 
-#[cfg(not(any(target_os = "android", target_os = "linux")))]
+#[cfg(target_os = "macos")]
+#[path = "macos.rs"]
+mod platform;
+
+#[cfg(target_os = "windows")]
+#[path = "windows.rs"]
+mod platform;
+
+#[cfg(not(any(
+    target_os = "android",
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "windows"
+)))]
 #[path = "external.rs"]
 mod platform;
 

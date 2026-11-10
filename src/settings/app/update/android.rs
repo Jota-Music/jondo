@@ -2,6 +2,11 @@ use std::path::{Path, PathBuf};
 
 use crate::shared::i18n::t;
 
+/// The APK is always the artifact the system installer owns.
+pub(super) fn native() -> bool {
+    true
+}
+
 /// Stages the APK in the app's private files dir so the Java `FileProvider`
 /// can expose it to the system package installer.
 pub(super) fn dir() -> Result<PathBuf, String> {
