@@ -252,6 +252,7 @@ pub(super) fn spanish(key: &str) -> &str {
         "No Spotify playlists." => "No hay playlists de Spotify.",
         "Connect with Spotify" => "Conectar con Spotify",
         "Connect with Spotify to use this." => "Conecta con Spotify para usar esto.",
+        "Signed in to Spotify" => "Sesión iniciada en Spotify",
         "Tap Connect with Spotify and log in with your account." => {
             "Pulsa Conectar con Spotify e inicia sesión con tu cuenta."
         }

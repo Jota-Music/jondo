@@ -1,3 +1,5 @@
+use crate::shared::i18n::t;
+
 use super::*;
 
 impl Jondo {
@@ -7,6 +9,7 @@ impl Jondo {
                 self.store.spotify_at = crate::shared::kernel::app::clock::now_ms();
                 self.store.spotify = Some(login.auth);
                 self.adopt_spotify(login.session, cx);
+                self.notify(t("Signed in to Spotify"));
             }
             Event::SpotifyLogin(Err(error)) => {
                 self.settings

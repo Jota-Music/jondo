@@ -9,15 +9,16 @@ use crate::shared::i18n::t;
 use crate::shared::ui::views::components::{hover, text};
 use crate::shared::ui::views::design::icons::{self, Icon};
 use crate::shared::ui::views::design::theme;
-use crate::shell::app::{Jondo, SpotifyState};
+use crate::shell::app::Jondo;
 
 use super::super::chrome::{card, danger_button, filled_button, section};
 
 use super::pieces::{browser_import, paragraph, spotify_card};
 
 pub(crate) fn account(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> AnyElement {
-    let spotify = app.settings.read(cx).spotify == SpotifyState::On;
+    let spotify = app.settings.read(cx).spotify;
     let spotify_user = app.settings.read(cx).user.clone();
+    let spotify_error = app.settings.read(cx).error.clone();
     let youtube = app.youtube.signed_in();
     let full = app.store.youtube_full;
     let open = app.ui.cookies_open;
@@ -37,7 +38,7 @@ pub(crate) fn account(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jon
         .unwrap_or("");
 
     let mut body = div().flex().flex_col().gap(theme::unit(16.0));
-    body = body.child(spotify_card(cx, spotify, spotify_user));
+    body = body.child(spotify_card(cx, spotify, spotify_user, spotify_error));
     let youtube_body = youtube_body(
         app, window, cx, youtube, full, &browsers, browser, importing, picking, open, &error,
     );

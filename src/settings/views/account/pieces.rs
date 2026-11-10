@@ -74,15 +74,9 @@ pub(super) fn browser_import(
         body = body.child(text::text(browser, 12.0, theme::FAINT));
     }
 
-    let label = if importing {
-        t("Reading the cookies of {}…").replace("{}", browser)
-    } else {
-        t("Use the {} session").replace("{}", browser)
-    };
-
     body = body.child(filled_button(
         "youtube-browser",
-        label,
+        t("Use the {} session").replace("{}", browser),
         importing,
         !importing,
         true,
@@ -103,11 +97,12 @@ pub(super) fn browser_import(
 
 pub(super) fn spotify_card(
     cx: &mut Context<Jondo>,
-    spotify: bool,
+    state: SpotifyState,
     spotify_user: String,
+    error: Option<String>,
 ) -> gpui::Div {
     let mut body = div();
-    if spotify {
+    if state == SpotifyState::On {
         body = body.child(card(
             div()
                 .flex()
@@ -137,45 +132,64 @@ pub(super) fn spotify_card(
                 )),
         ));
     } else {
-        body = body.child(card(
-            div()
-                .p(theme::unit(12.0))
-                .flex()
-                .flex_col()
-                .items_center()
-                .gap(theme::unit(10.0))
-                .child(crate::shared::music::views::cover::brand(
-                    crate::shared::music::domain::Source::Spotify,
-                    24.0,
-                ))
-                .child(text::text(
-                    t("Connect with Spotify to use this."),
-                    14.0,
-                    theme::MUTED,
-                ))
-                .child(
-                    div()
-                        .id("spotify-connect")
-                        .h(theme::unit(32.0))
-                        .px(theme::unit(12.0))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .rounded(theme::unit(8.0))
-                        .bg(theme::SPOTIFY)
-                        .cursor_pointer()
-                        .on_click(cx.listener(|app, _: &gpui::ClickEvent, _, cx| {
-                            app.login_spotify(cx);
-                            cx.notify();
-                        }))
-                        .child(text::weighted(
-                            t("Connect with Spotify"),
-                            12.0,
-                            theme::BINARY,
-                            theme::Weight::SemiBold,
-                        )),
-                ),
-        ));
+        let connecting = state == SpotifyState::Connecting;
+        // The card keeps the same shape while the browser handshake runs: the
+        // pill spins in place of the connect action, so nothing moves under
+        // the pointer.
+        let mut pill = div()
+            .id("spotify-connect")
+            .h(theme::unit(32.0))
+            .px(theme::unit(12.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .gap(theme::unit(6.0))
+            .rounded(theme::unit(8.0))
+            .bg(theme::SPOTIFY);
+        if connecting {
+            pill = pill
+                .debug_selector(|| "spotify-connecting".to_owned())
+                .opacity(0.7)
+                .cursor_default()
+                .child(button::spinner(12.0, theme::BINARY));
+        } else {
+            pill =
+                pill.cursor_pointer()
+                    .on_click(cx.listener(|app, _: &gpui::ClickEvent, _, cx| {
+                        app.login_spotify(cx);
+                        cx.notify();
+                    }));
+        }
+
+        let mut panel = div()
+            .p(theme::unit(12.0))
+            .flex()
+            .flex_col()
+            .items_center()
+            .gap(theme::unit(10.0))
+            .child(crate::shared::music::views::cover::brand(
+                crate::shared::music::domain::Source::Spotify,
+                24.0,
+            ))
+            .child(text::text(
+                if connecting {
+                    t("Connecting to Spotify…")
+                } else {
+                    t("Connect with Spotify to use this.")
+                },
+                14.0,
+                theme::MUTED,
+            ));
+        if let Some(error) = error {
+            panel = panel.child(text::text(error, 11.0, theme::DANGER));
+        }
+
+        body = body.child(card(panel.child(pill.child(text::weighted(
+            t("Connect with Spotify"),
+            12.0,
+            theme::BINARY,
+            theme::Weight::SemiBold,
+        )))));
     }
 
     body
