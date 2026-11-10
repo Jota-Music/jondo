@@ -94,7 +94,7 @@ impl Jondo {
             textareas: HashMap::new(),
             scrolls: HashMap::new(),
             panes: HashMap::new(),
-            pane_offsets: HashMap::new(),
+            lists: HashMap::new(),
             subscriptions: Vec::new(),
             route: Route::Home,
             history: History::new(),
@@ -317,6 +317,17 @@ impl Jondo {
 
     pub fn pane(&mut self, key: impl Into<String>) -> ScrollHandle {
         self.panes.entry(key.into()).or_default().clone()
+    }
+
+    /// A variable-height list page: only the items under the viewport are
+    /// built, so scrolling it does not rebuild the whole page.
+    pub fn list(&mut self, key: impl Into<String>, count: usize) -> gpui::ListState {
+        self.lists
+            .entry(key.into())
+            .or_insert_with(|| {
+                gpui::ListState::new(count, gpui::ListAlignment::Top, theme::unit(64.0))
+            })
+            .clone()
     }
 
     pub fn value(&self, key: &str, cx: &App) -> String {

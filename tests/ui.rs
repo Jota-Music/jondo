@@ -208,3 +208,60 @@ fn a_long_local_shelf_virtualizes_its_rows(cx: &mut TestAppContext) {
         "thirty playlists must overflow the shelf viewport"
     );
 }
+
+/// Settings is the longest route: one item per section, and only the ones under
+/// the viewport are built. A page rebuilt whole on every scroll sample is what
+/// made its scroll feel heavy on a phone.
+#[gpui::test]
+fn a_long_settings_page_virtualizes_its_sections(cx: &mut TestAppContext) {
+    home();
+    let store = jondo::shared::storage::Store::load();
+
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        jondo::shared::ui::views::design::theme::install(cx);
+    });
+
+    let (app, cx) = cx.add_window_view(|window, cx| Jondo::boot(store, window, cx));
+    cx.run_until_parked();
+
+    // Opening Settings scans the browsers on the blocking pool, and a worker
+    // thread waking the frame is exactly what parking mode is for.
+    cx.executor().allow_parking();
+
+    let handle = cx.update(|window, _| window.window_handle());
+    cx.simulate_window_resize(handle, gpui::size(gpui::px(390.0), gpui::px(844.0)));
+    frame(cx);
+
+    app.update(cx, |app, cx| app.open(Route::Settings, cx));
+    cx.run_until_parked();
+    frame(cx);
+
+    assert!(
+        cx.debug_bounds("settings-item-0").is_some(),
+        "the page opens on its header"
+    );
+    assert!(
+        cx.debug_bounds("settings-item-9").is_none(),
+        "the footer is below the phone's viewport, so it must not be built"
+    );
+
+    let at = gpui::point(gpui::px(195.0), gpui::px(400.0));
+    for _ in 0..15 {
+        cx.simulate_event(gpui::ScrollEvent {
+            position: at,
+            delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.0), gpui::px(-400.0))),
+            ..Default::default()
+        });
+        frame(cx);
+    }
+
+    assert!(
+        cx.debug_bounds("settings-item-9").is_some(),
+        "the end of the page must build its last section"
+    );
+    assert!(
+        cx.debug_bounds("settings-item-0").is_none(),
+        "the header is off screen, so the list must have dropped it"
+    );
+}

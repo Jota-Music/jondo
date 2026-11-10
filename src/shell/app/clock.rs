@@ -86,14 +86,6 @@ impl Jondo {
 
     pub fn pump(&mut self, cx: &mut gpui::Context<Self>) -> bool {
         let mut changed = self.covers.poll();
-        for (name, pane) in &self.panes {
-            let offset = pane.offset().y.as_f32();
-            if self.pane_offsets.get(name).copied() != Some(offset) {
-                self.pane_offsets.insert(name.clone(), offset);
-                changed = true;
-            }
-        }
-
         changed |= self.drain_events(cx);
         if self
             .clipboard

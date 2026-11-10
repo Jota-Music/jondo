@@ -77,9 +77,7 @@ pub struct Jondo {
     pub(crate) textareas: HashMap<&'static str, Entity<TextareaState>>,
     pub(crate) scrolls: HashMap<String, UniformListScrollHandle>,
     pub(crate) panes: HashMap<String, ScrollHandle>,
-    /// The pane offsets the last tick saw, so a scroll asks for a frame and
-    /// the page can load the covers of the rows it just uncovered.
-    pane_offsets: HashMap<String, f32>,
+    pub(crate) lists: HashMap<String, gpui::ListState>,
     pub(crate) subscriptions: Vec<gpui::Subscription>,
     pub(crate) route: Route,
     pub(crate) history: History,

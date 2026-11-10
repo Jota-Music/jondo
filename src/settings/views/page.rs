@@ -1,6 +1,7 @@
+use gpui::prelude::FluentBuilder as _;
 use gpui::{
     AnyElement, Context, InteractiveElement, IntoElement, ParentElement,
-    StatefulInteractiveElement, Styled, Window, div,
+    StatefulInteractiveElement, Styled, Window, div, list,
 };
 
 use gpui_kit::component::input::InputEvent;
@@ -13,84 +14,149 @@ use crate::shell::app::Jondo;
 
 use super::account::account;
 use super::backups::{backups, logs};
-#[cfg(not(target_os = "android"))]
-use super::preferences::memory;
 #[cfg(target_os = "android")]
 use super::preferences::playback;
-use super::preferences::{about, discord, language, relay};
+use super::preferences::{about, language, relay};
+#[cfg(not(target_os = "android"))]
+use super::preferences::{discord, memory};
+
+/// One section per item: the list only builds the ones under the viewport, so
+/// a scroll sample does not rebuild the whole page.
+#[derive(Clone, Copy)]
+enum Item {
+    Header,
+    Account,
+    Language,
+    #[cfg(not(target_os = "android"))]
+    Discord,
+    #[cfg(target_os = "android")]
+    Playback,
+    #[cfg(not(target_os = "android"))]
+    Memory,
+    Relay,
+    About,
+    Backups,
+    Logs,
+    Footer,
+}
+
+#[cfg(target_os = "android")]
+const ITEMS: &[Item] = &[
+    Item::Header,
+    Item::Account,
+    Item::Language,
+    Item::Playback,
+    Item::Relay,
+    Item::About,
+    Item::Backups,
+    Item::Logs,
+    Item::Footer,
+];
+
+#[cfg(not(target_os = "android"))]
+const ITEMS: &[Item] = &[
+    Item::Header,
+    Item::Account,
+    Item::Language,
+    Item::Discord,
+    Item::Memory,
+    Item::Relay,
+    Item::About,
+    Item::Backups,
+    Item::Logs,
+    Item::Footer,
+];
 
 pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> AnyElement {
     let narrow = window.viewport_size().width < theme::unit(768.0);
-    let scroll = app.pane("settings");
-    let mut page = div()
-        .id("settings-scroll")
-        .size_full()
-        .flex()
-        .flex_col()
-        .gap(theme::unit(if narrow { 16.0 } else { 24.0 }))
-        .overflow_y_scroll()
-        .track_scroll(&scroll)
-        .pr(theme::unit(15.0))
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .gap(theme::unit(4.0))
-                .child(text::weighted(
-                    t("Settings"),
-                    20.0,
-                    theme::ZINC_100,
-                    theme::Weight::SemiBold,
-                ))
-                .child(text::text(
-                    t("Account, interface and backups"),
-                    14.0,
-                    theme::FAINT,
-                )),
-        );
+    let state = app.list("settings", ITEMS.len());
+    let entity = cx.entity();
 
-    page = page
-        .child(account(app, window, cx))
-        .child(language(app, cx))
-        .child(discord(app, cx));
-
-    #[cfg(target_os = "android")]
-    {
-        page = page.child(playback(app, cx));
-    }
-
-    #[cfg(not(target_os = "android"))]
-    {
-        page = page.child(memory(app, cx));
-    }
-
-    page = page
-        .child(relay(app, window, cx))
-        .child(about(app, cx))
-        .child(backups(app, narrow, cx))
-        .child(logs(app, cx))
-        .child(
-            div().pt(theme::unit(8.0)).flex().justify_center().child(
-                div()
-                    .id("settings-developer")
-                    .cursor_pointer()
-                    .hover(|style| style.underline())
-                    .on_click(cx.listener(|_, _: &gpui::ClickEvent, _, _| {
-                        crate::shared::platform::links::open("https://github.com/salvadorsru").ok();
-                    }))
-                    .child(text::text(
-                        "Developed by @salvadorsru",
-                        12.0,
-                        theme::ZINC_600,
-                    )),
-            ),
-        );
+    let page = list(state.clone(), move |ix, window, cx| {
+        entity.update(cx, |app, cx| item(app, ix, narrow, window, cx))
+    })
+    .size_full();
 
     div()
         .relative()
         .size_full()
-        .child(page)
-        .child(scroll::bar(&scroll))
+        .child(div().size_full().pr(theme::unit(15.0)).child(page))
+        .child(scroll::bar(&state))
+        .into_any_element()
+}
+
+fn item(
+    app: &mut Jondo,
+    ix: usize,
+    narrow: bool,
+    window: &mut Window,
+    cx: &mut Context<Jondo>,
+) -> AnyElement {
+    let body = match ITEMS[ix] {
+        Item::Header => header(),
+        Item::Account => account(app, window, cx),
+        Item::Language => language(app, cx),
+        #[cfg(not(target_os = "android"))]
+        Item::Discord => discord(app, cx),
+        #[cfg(target_os = "android")]
+        Item::Playback => playback(app, cx),
+        #[cfg(not(target_os = "android"))]
+        Item::Memory => memory(app, cx),
+        Item::Relay => relay(app, window, cx),
+        Item::About => about(app, cx),
+        Item::Backups => backups(app, narrow, cx),
+        Item::Logs => logs(app, cx),
+        Item::Footer => footer(cx),
+    };
+
+    div()
+        .w_full()
+        .when(ix + 1 < ITEMS.len(), |this| {
+            this.pb(theme::unit(if narrow { 16.0 } else { 24.0 }))
+        })
+        .debug_selector(move || format!("settings-item-{ix}"))
+        .child(body)
+        .into_any_element()
+}
+
+fn header() -> AnyElement {
+    div()
+        .flex()
+        .flex_col()
+        .gap(theme::unit(4.0))
+        .child(text::weighted(
+            t("Settings"),
+            20.0,
+            theme::ZINC_100,
+            theme::Weight::SemiBold,
+        ))
+        .child(text::text(
+            t("Account, interface and backups"),
+            14.0,
+            theme::FAINT,
+        ))
+        .into_any_element()
+}
+
+fn footer(cx: &mut Context<Jondo>) -> AnyElement {
+    div()
+        .pt(theme::unit(8.0))
+        .flex()
+        .justify_center()
+        .child(
+            div()
+                .id("settings-developer")
+                .cursor_pointer()
+                .hover(|style| style.underline())
+                .on_click(cx.listener(|_, _: &gpui::ClickEvent, _, _| {
+                    crate::shared::platform::links::open("https://github.com/salvadorsru").ok();
+                }))
+                .child(text::text(
+                    "Developed by @salvadorsru",
+                    12.0,
+                    theme::ZINC_600,
+                )),
+        )
         .into_any_element()
 }
 
