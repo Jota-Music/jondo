@@ -37,7 +37,7 @@ pub(crate) fn backups(app: &mut Jondo, narrow: bool, cx: &mut Context<Jondo>) ->
     #[cfg(not(target_os = "android"))]
     let busy = false;
 
-    let session = session(&pass);
+    let session = session(&pass, cx);
     let files = files(app, narrow, busy, cx);
 
     let mut autosave = div()
@@ -129,7 +129,10 @@ pub(crate) fn backups(app: &mut Jondo, narrow: bool, cx: &mut Context<Jondo>) ->
     section(Icon::ArchiveRestore, t("Backups"), None, body)
 }
 
-fn session(pass: &Option<gpui::Entity<gpui_kit::component::input::InputState>>) -> gpui::Div {
+fn session(
+    pass: &Option<gpui::Entity<gpui_kit::component::input::InputState>>,
+    cx: &gpui::App,
+) -> gpui::Div {
     let mut session = div()
         .flex()
         .flex_col()
@@ -141,7 +144,7 @@ fn session(pass: &Option<gpui::Entity<gpui_kit::component::input::InputState>>) 
             theme::Weight::SemiBold,
         ));
     if let Some(state) = pass {
-        session = session.child(field::secret(state));
+        session = session.child(field::secret(state, cx));
     }
 
     session = session.child(text::text(

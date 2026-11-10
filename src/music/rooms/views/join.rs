@@ -88,7 +88,7 @@ pub(super) fn join_panel(app: &mut Jondo, window: &mut Window, cx: &mut Context<
                 .flex()
                 .items_center()
                 .gap(theme::unit(8.0))
-                .child(boxed(&code_field, false, true).flex_1())
+                .child(boxed(&code_field, false, true, cx).flex_1())
                 .child(compact(
                     "rooms-generate",
                     t("Generate"),
@@ -110,7 +110,7 @@ pub(super) fn join_panel(app: &mut Jondo, window: &mut Window, cx: &mut Context<
         .child(text::text(hint, 12.0, theme::FAINT).mb(theme::unit(8.0)))
         .child(labelled(
             t("Room password"),
-            boxed(&password_field, true, false),
+            boxed(&password_field, true, false, cx),
         ))
         .child(action(
             "rooms-connect",
@@ -221,10 +221,15 @@ fn labelled(label: &str, field: impl IntoElement) -> Div {
         .child(field)
 }
 
-fn boxed(state: &Entity<InputState>, masked: bool, mono: bool) -> Div {
+fn boxed(state: &Entity<InputState>, masked: bool, mono: bool, cx: &gpui::App) -> Div {
     let input = field::input(state);
     let input = if mono {
         input.font_family(theme::MONO)
+    } else {
+        input
+    };
+    let input = if masked {
+        input.flex_1().min_w(theme::unit(0.0))
     } else {
         input
     };
@@ -240,7 +245,8 @@ fn boxed(state: &Entity<InputState>, masked: bool, mono: bool) -> Div {
         .flex()
         .items_center()
         .block_mouse_except_scroll()
-        .child(if masked { input.mask_toggle() } else { input })
+        .child(input)
+        .children(masked.then(|| field::reveal(state, cx)))
 }
 
 /// The form is the source of truth, so opening the sheet from a saved room (or

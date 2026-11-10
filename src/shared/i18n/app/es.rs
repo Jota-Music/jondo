@@ -495,6 +495,8 @@ pub(super) fn spanish(key: &str) -> &str {
         "Listen to this song" => "Escuchar canción",
         "Dismiss" => "Descartar",
         "Channel" => "Canal",
+        "Show password" => "Mostrar contraseña",
+        "Hide password" => "Ocultar contraseña",
         "Connect Spotify to play this song" => "Conecta Spotify para reproducir esta canción",
         _ => key,
     }

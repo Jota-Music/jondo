@@ -325,7 +325,7 @@ pub(super) fn relay(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo
             .gap(theme::unit(6.0))
             .child(labelled(
                 t("Auth token"),
-                field::secret_disabled(&token_field, locked),
+                field::secret_disabled(&token_field, locked, cx),
             ));
         if let Some(line) = token_status(token_state) {
             block = block.child(line);

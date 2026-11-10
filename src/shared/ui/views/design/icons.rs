@@ -96,6 +96,8 @@ pub enum Icon {
     ShieldAlert,
     ChevronRight,
     Tv,
+    Eye,
+    EyeOff,
 }
 
 pub const ARROW_LEFT: Icon = Icon::ArrowLeft;
@@ -166,6 +168,8 @@ pub const BOOKMARK_CHECK: Icon = Icon::BookmarkCheck;
 pub const UNPLUG: Icon = Icon::Unplug;
 pub const USER_ROUND: Icon = Icon::UserRound;
 pub const TV: Icon = Icon::Tv;
+pub const EYE: Icon = Icon::Eye;
+pub const EYE_OFF: Icon = Icon::EyeOff;
 
 impl Icon {
     pub fn name(self) -> &'static str {
@@ -258,6 +262,8 @@ impl Icon {
             Self::ShieldAlert => "shield-alert",
             Self::ChevronRight => "chevron-right",
             Self::Tv => "tv",
+            Self::Eye => "eye",
+            Self::EyeOff => "eye-off",
         }
     }
 
@@ -345,6 +351,8 @@ impl Icon {
             Self::ShieldAlert => t("Risk"),
             Self::ChevronRight => t("Expand"),
             Self::Tv => t("Channel"),
+            Self::Eye => t("Show password"),
+            Self::EyeOff => t("Hide password"),
         }
     }
 
@@ -442,6 +450,8 @@ impl Icon {
             Self::ShieldAlert => include_str!("../../../../../assets/icons/shield-alert.svg"),
             Self::ChevronRight => include_str!("../../../../../assets/icons/chevron-right.svg"),
             Self::Tv => include_str!("../../../../../assets/icons/tv.svg"),
+            Self::Eye => include_str!("../../../../../assets/icons/eye.svg"),
+            Self::EyeOff => include_str!("../../../../../assets/icons/eye-off.svg"),
         }
     }
 }
