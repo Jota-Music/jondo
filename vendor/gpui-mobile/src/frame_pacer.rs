@@ -36,6 +36,10 @@ use std::{
 /// Posts one vsync callback that will call [`FramePacer::on_vsync`].
 pub(crate) type PostVsync = Box<dyn Fn()>;
 
+/// How many refresh intervals a posted callback may stay unserved before it
+/// is treated as lost and posted again.
+const LOST_FRAMES: u32 = 4;
+
 pub(crate) struct FramePacer {
     /// `None` paces by wall clock at `interval`.
     post_vsync: Option<PostVsync>,
@@ -45,6 +49,8 @@ pub(crate) struct FramePacer {
     interval: Duration,
     /// A vsync callback is posted and has not fired yet.
     posted: Cell<bool>,
+    /// When that callback was posted, to tell a pending vsync from a lost one.
+    posted_at: Cell<Option<Instant>>,
     /// A vsync fired (or the fallback clock ran out) and the frame it owes has
     /// not been taken yet.
     due: Cell<bool>,
@@ -63,6 +69,7 @@ impl FramePacer {
             post_vsync: Some(post_vsync),
             interval,
             posted: Cell::new(false),
+            posted_at: Cell::new(None),
             due: Cell::new(false),
             fallback_due_at: Cell::new(None),
             last_frame_at: Cell::new(None),
@@ -75,6 +82,7 @@ impl FramePacer {
             post_vsync: None,
             interval,
             posted: Cell::new(false),
+            posted_at: Cell::new(None),
             due: Cell::new(false),
             fallback_due_at: Cell::new(None),
             last_frame_at: Cell::new(None),
@@ -97,6 +105,7 @@ impl FramePacer {
             Some(_) if interval_elapsed => self.due.set(true),
             Some(post) => {
                 self.posted.set(true);
+                self.posted_at.set(Some(now));
                 post();
             }
             None => {
@@ -112,12 +121,14 @@ impl FramePacer {
     /// The posted vsync callback fired: the frame it owes is now due.
     pub(crate) fn on_vsync(&self) {
         self.posted.set(false);
+        self.posted_at.set(None);
         self.due.set(true);
     }
 
     /// Takes the due frame, if any. The loop draws when this returns `true`
     /// and only then; a frame left untaken (window inactive) stays due.
     pub(crate) fn take_frame(&self, now: Instant) -> bool {
+        self.repost_lost_callback(now);
         if self.due.replace(false) {
             self.last_frame_at.set(Some(now));
             return true;
@@ -146,7 +157,29 @@ impl FramePacer {
     /// dirty.
     pub(crate) fn resume(&self, now: Instant) {
         self.posted.set(false);
+        self.posted_at.set(None);
         self.schedule(now);
+    }
+
+    /// Posts again when the callback that is supposedly pending never fired.
+    ///
+    /// A `AChoreographer` callback can be dropped while the process stops
+    /// being driven (a paused activity, a surface that went away). Without
+    /// this the pacer keeps waiting for a callback nobody will deliver, and
+    /// the window never draws or takes input again. One extra frame from a
+    /// late callback is cheaper than a frozen app.
+    fn repost_lost_callback(&self, now: Instant) {
+        let (true, Some(at)) = (self.posted.get(), self.posted_at.get()) else {
+            return;
+        };
+        if now.saturating_duration_since(at) <= self.interval * LOST_FRAMES {
+            return;
+        }
+        let Some(post) = &self.post_vsync else {
+            return;
+        };
+        self.posted_at.set(Some(now));
+        post();
     }
 
     /// How long the loop may block before it has something to do: zero while
@@ -299,6 +332,32 @@ mod tests {
         pacer.on_vsync();
         assert!(pacer.take_frame(now));
         assert!(!pacer.take_frame(now));
+    }
+
+    #[test]
+    fn a_lost_vsync_callback_is_posted_again() {
+        let now = Instant::now();
+        let (pacer, posts) = vsync_pacer_after_frame(now);
+        let now = now + Duration::from_millis(1);
+
+        pacer.schedule(now);
+        assert_eq!(posts.get(), 1);
+
+        assert!(
+            !pacer.take_frame(now + Duration::from_millis(2)),
+            "a pending vsync is not due yet"
+        );
+        assert_eq!(posts.get(), 1, "no repost inside the timeout");
+
+        let late = now + INTERVAL * LOST_FRAMES + Duration::from_millis(1);
+        assert!(!pacer.take_frame(late));
+        assert_eq!(posts.get(), 2, "the lost callback is posted again");
+
+        pacer.on_vsync();
+        assert!(
+            pacer.take_frame(late + Duration::from_millis(1)),
+            "the reposted callback still owes the frame"
+        );
     }
 
     #[test]
