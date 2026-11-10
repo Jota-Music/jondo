@@ -12,11 +12,7 @@ use super::{jars::*, secrets::*};
 
 pub(super) fn header(jar: &Jar) -> Result<String, String> {
     let (rows, version) = read(jar)?;
-    let secrets = if jar.firefox {
-        Vec::new()
-    } else {
-        secrets(jar.name)
-    };
+    let decryptor = Decryptor::new(jar);
 
     let mut order = Vec::new();
     let mut picked: Vec<(String, String, u8)> = Vec::new();
@@ -25,7 +21,7 @@ pub(super) fn header(jar: &Jar) -> Result<String, String> {
         let value = if !row.value.is_empty() {
             row.value
         } else if !row.encrypted.is_empty() {
-            match decrypt(&row.encrypted, version, &secrets) {
+            match decryptor.value(&row.encrypted, version) {
                 Some(value) => value,
                 None => {
                     locked = true;

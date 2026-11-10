@@ -1,147 +1,281 @@
 //! Reads the YouTube session a desktop browser already holds.
 //!
-//! Chromium keeps its cookie values AES-128-CBC encrypted under a password the
-//! desktop keyring holds; Firefox keeps them in the clear. Both jars are copied
-//! before reading, because the browser keeps the live file locked and what is
-//! still in the write-ahead log would otherwise be missed. Android cannot reach
-//! a browser jar: the phone version accepts pasted cookies instead.
+//! Chromium keeps its cookie values encrypted — under a keyring password on
+//! Linux and macOS, under DPAPI on Windows — while Firefox keeps them in the
+//! clear. Both jars are copied before reading, because the browser keeps the
+//! live file locked and what is still in the write-ahead log would otherwise be
+//! missed. Android cannot reach a browser jar: the phone version accepts pasted
+//! cookies instead.
 
 use std::path::PathBuf;
 
 use super::read::*;
 
-pub(super) struct Root {
-    name: &'static str,
-    path: &'static str,
-    home: bool,
-    firefox: bool,
+/// Where a browser keeps its profiles. The same browser uses a different folder
+/// on each desktop, and on Windows even a different root per browser.
+pub(super) enum Base {
+    /// The per-user configuration: `~/.config`, `~/Library/Application Support`
+    /// or `%APPDATA%`.
+    Config,
+    /// The per-user local data: `%LOCALAPPDATA%` on Windows, the configuration
+    /// folder everywhere else. Only the Windows roots use it.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    Local,
+    /// Straight from the home directory, where the Linux and macOS browsers keep
+    /// their profiles.
+    #[cfg_attr(windows, allow(dead_code))]
+    Home,
 }
 
-const ROOTS: &[Root] = &[
+pub(super) struct Root {
+    pub(super) name: &'static str,
+    pub(super) path: &'static str,
+    pub(super) base: Base,
+    pub(super) firefox: bool,
+}
+
+#[cfg(target_os = "linux")]
+pub(super) const ROOTS: &[Root] = &[
     Root {
         name: "Brave",
         path: "BraveSoftware/Brave-Browser",
-        home: false,
+        base: Base::Config,
         firefox: false,
     },
     Root {
         name: "Brave",
         path: ".var/app/com.brave.Browser/config/BraveSoftware/Brave-Browser",
-        home: true,
+        base: Base::Home,
         firefox: false,
     },
     Root {
         name: "Chrome",
         path: "google-chrome",
-        home: false,
+        base: Base::Config,
         firefox: false,
     },
     Root {
         name: "Chrome",
         path: ".var/app/com.google.Chrome/config/google-chrome",
-        home: true,
+        base: Base::Home,
         firefox: false,
     },
     Root {
         name: "Chromium",
         path: "chromium",
-        home: false,
+        base: Base::Config,
         firefox: false,
     },
     Root {
         name: "Chromium",
         path: ".var/app/org.chromium.Chromium/config/chromium",
-        home: true,
+        base: Base::Home,
         firefox: false,
     },
     Root {
         name: "Edge",
         path: "microsoft-edge",
-        home: false,
+        base: Base::Config,
         firefox: false,
     },
     Root {
         name: "Edge",
         path: ".var/app/com.microsoft.Edge/config/microsoft-edge",
-        home: true,
+        base: Base::Home,
         firefox: false,
     },
     Root {
         name: "Vivaldi",
         path: "vivaldi",
-        home: false,
+        base: Base::Config,
         firefox: false,
     },
     Root {
         name: "Vivaldi",
         path: ".var/app/com.vivaldi.Vivaldi/config/vivaldi",
-        home: true,
+        base: Base::Home,
         firefox: false,
     },
     Root {
         name: "Firefox",
         path: ".mozilla/firefox",
-        home: true,
+        base: Base::Home,
         firefox: true,
     },
     Root {
         name: "Firefox",
         path: "snap/firefox/common/.mozilla/firefox",
-        home: true,
+        base: Base::Home,
         firefox: true,
     },
     Root {
         name: "Firefox",
         path: ".var/app/org.mozilla.firefox/.mozilla/firefox",
-        home: true,
+        base: Base::Home,
         firefox: true,
     },
     Root {
         name: "Zen",
         path: ".zen",
-        home: true,
+        base: Base::Home,
         firefox: true,
     },
     Root {
         name: "Zen",
         path: ".var/app/app.zen_browser.zen/.zen",
-        home: true,
+        base: Base::Home,
         firefox: true,
     },
     Root {
         name: "LibreWolf",
         path: ".librewolf",
-        home: true,
+        base: Base::Home,
         firefox: true,
     },
     Root {
         name: "LibreWolf",
         path: ".var/app/io.gitlab.librewolf-community/.librewolf",
-        home: true,
+        base: Base::Home,
         firefox: true,
     },
     Root {
         name: "Waterfox",
         path: ".waterfox",
-        home: true,
+        base: Base::Home,
         firefox: true,
     },
     Root {
         name: "Waterfox",
         path: ".var/app/net.waterfox.waterfox/.waterfox",
-        home: true,
+        base: Base::Home,
         firefox: true,
     },
     Root {
         name: "Floorp",
         path: ".floorp",
-        home: true,
+        base: Base::Home,
         firefox: true,
     },
     Root {
         name: "Floorp",
         path: ".var/app/one.ablaze.floorp/.floorp",
-        home: true,
+        base: Base::Home,
+        firefox: true,
+    },
+];
+
+#[cfg(target_os = "macos")]
+pub(super) const ROOTS: &[Root] = &[
+    Root {
+        name: "Brave",
+        path: "BraveSoftware/Brave-Browser",
+        base: Base::Config,
+        firefox: false,
+    },
+    Root {
+        name: "Chrome",
+        path: "Google/Chrome",
+        base: Base::Config,
+        firefox: false,
+    },
+    Root {
+        name: "Chromium",
+        path: "Chromium",
+        base: Base::Config,
+        firefox: false,
+    },
+    Root {
+        name: "Edge",
+        path: "Microsoft Edge",
+        base: Base::Config,
+        firefox: false,
+    },
+    Root {
+        name: "Vivaldi",
+        path: "Vivaldi",
+        base: Base::Config,
+        firefox: false,
+    },
+    Root {
+        name: "Firefox",
+        path: "Library/Application Support/Firefox/Profiles",
+        base: Base::Home,
+        firefox: true,
+    },
+    Root {
+        name: "Zen",
+        path: "Library/Application Support/zen/Profiles",
+        base: Base::Home,
+        firefox: true,
+    },
+    Root {
+        name: "LibreWolf",
+        path: "Library/Application Support/librewolf/Profiles",
+        base: Base::Home,
+        firefox: true,
+    },
+    Root {
+        name: "Waterfox",
+        path: "Library/Application Support/Waterfox/Profiles",
+        base: Base::Home,
+        firefox: true,
+    },
+    Root {
+        name: "Floorp",
+        path: "Library/Application Support/Floorp/Profiles",
+        base: Base::Home,
+        firefox: true,
+    },
+];
+
+#[cfg(windows)]
+pub(super) const ROOTS: &[Root] = &[
+    Root {
+        name: "Brave",
+        path: "BraveSoftware/Brave-Browser/User Data",
+        base: Base::Local,
+        firefox: false,
+    },
+    Root {
+        name: "Chrome",
+        path: "Google/Chrome/User Data",
+        base: Base::Local,
+        firefox: false,
+    },
+    Root {
+        name: "Chromium",
+        path: "Chromium/User Data",
+        base: Base::Local,
+        firefox: false,
+    },
+    Root {
+        name: "Edge",
+        path: "Microsoft/Edge/User Data",
+        base: Base::Local,
+        firefox: false,
+    },
+    Root {
+        name: "Vivaldi",
+        path: "Vivaldi/User Data",
+        base: Base::Local,
+        firefox: false,
+    },
+    Root {
+        name: "Firefox",
+        path: "Mozilla/Firefox/Profiles",
+        base: Base::Config,
+        firefox: true,
+    },
+    Root {
+        name: "Zen",
+        path: "zen/Profiles",
+        base: Base::Config,
+        firefox: true,
+    },
+    Root {
+        name: "LibreWolf",
+        path: "librewolf/Profiles",
+        base: Base::Config,
         firefox: true,
     },
 ];
@@ -211,15 +345,16 @@ pub(super) fn jars() -> Vec<Jar> {
     let home = directories::UserDirs::new()
         .map(|dirs| dirs.home_dir().to_path_buf())
         .unwrap_or_default();
-    let config = std::env::var("XDG_CONFIG_HOME")
-        .ok()
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home.join(".config"));
 
     let mut list = Vec::new();
     let mut seen = std::collections::HashSet::new();
     for root in ROOTS {
-        let base = if root.home { &home } else { &config };
+        let base = match root.base {
+            Base::Home => home.clone(),
+            Base::Config => config(&home),
+            Base::Local => local(&home),
+        };
+
         let dir = base.join(root.path);
         let Ok(entries) = std::fs::read_dir(&dir) else {
             continue;
@@ -255,6 +390,46 @@ pub(super) fn jars() -> Vec<Jar> {
     }
 
     list
+}
+
+#[cfg(target_os = "linux")]
+fn config(home: &std::path::Path) -> PathBuf {
+    std::env::var("XDG_CONFIG_HOME")
+        .ok()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home.join(".config"))
+}
+
+#[cfg(target_os = "linux")]
+fn local(home: &std::path::Path) -> PathBuf {
+    std::env::var("XDG_DATA_HOME")
+        .ok()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home.join(".local/share"))
+}
+
+#[cfg(target_os = "macos")]
+fn config(home: &std::path::Path) -> PathBuf {
+    home.join("Library/Application Support")
+}
+
+#[cfg(target_os = "macos")]
+fn local(home: &std::path::Path) -> PathBuf {
+    config(home)
+}
+
+#[cfg(windows)]
+fn config(home: &std::path::Path) -> PathBuf {
+    std::env::var_os("APPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home.join("AppData/Roaming"))
+}
+
+#[cfg(windows)]
+fn local(home: &std::path::Path) -> PathBuf {
+    std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home.join("AppData/Local"))
 }
 
 pub(super) fn special(profile: &str) -> bool {

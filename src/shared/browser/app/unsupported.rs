@@ -1,5 +1,4 @@
-/// Android cannot read a browser jar (one WebView, no profile on disk) and the
-/// other platforms keep their cookies where this build cannot reach them, so the
+/// Android cannot read a browser jar (one WebView, no profile on disk), so the
 /// panel offers the pasted cookies only.
 pub fn available() -> Vec<&'static str> {
     Vec::new()

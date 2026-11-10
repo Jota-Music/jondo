@@ -43,6 +43,8 @@ fn chromium_values_decrypt_with_the_fallback_password() {
 
     let mut value_bytes = b"v10".to_vec();
     value_bytes.extend_from_slice(&body);
-    let value = decrypt(&value_bytes, 0, &["peanuts".to_owned()]).unwrap();
+    let value = Decryptor::for_test("peanuts")
+        .value(&value_bytes, 0)
+        .unwrap();
     assert_eq!(value, "session-value");
 }
