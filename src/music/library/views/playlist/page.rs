@@ -207,7 +207,8 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> An
             play: Some(Play {
                 enabled: !empty,
                 playing: app.player.read(cx).playing && here,
-                loading: app.player.read(cx).loading && here,
+                paused: app.player.read(cx).paused && here,
+                loading: app.player.read(cx).busy() && here,
                 on_click: Box::new(cx.listener(move |app, _: &gpui::ClickEvent, _, cx| {
                     app.toggle_playlist(&play_id, cx);
                     cx.notify();
