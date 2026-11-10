@@ -1,5 +1,6 @@
 use std::fs;
 use std::io::Write;
+use std::sync::Mutex;
 
 use crate::shared::music::domain::Room;
 use crate::shared::music::domain::Song;
@@ -8,6 +9,12 @@ use crate::shared::kernel::app::clock::{now, now_ms};
 use crate::shared::storage::domain::*;
 
 use super::file::*;
+
+/// The closing path writes on the UI thread while the writer thread may be
+/// writing the same temporary file, and whichever renames second loses the
+/// race. The lock is only held while a file is being written, so the frame
+/// never waits for a disk flush it did not ask for.
+static WRITING: Mutex<()> = Mutex::new(());
 
 impl Store {
     pub fn load() -> Self {
@@ -135,6 +142,10 @@ impl Store {
 
     pub(super) fn write(&self) {
         let Some(path) = path() else {
+            return;
+        };
+
+        let Ok(_writing) = WRITING.lock() else {
             return;
         };
 
