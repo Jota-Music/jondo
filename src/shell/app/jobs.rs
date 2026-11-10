@@ -51,13 +51,24 @@ pub enum Event {
     ClipboardSong(Result<Song, String>),
     Room(Box<rooms::Event>),
     Update(Result<crate::settings::app::update::Info, String>),
-    /// A finished background backup: the revision it started from, the store
-    /// it worked on, and its result.
-    Backup(
-        u64,
-        Box<crate::shared::storage::Store>,
-        Result<crate::settings::app::backup::Stats, String>,
-    ),
+    /// A finished background backup: the revision it started from, the pass it
+    /// ran, the store it worked on, and its result.
+    Backup {
+        revision: u64,
+        job: crate::settings::app::backup::Job,
+        store: Box<crate::shared::storage::Store>,
+        result: Result<crate::settings::app::backup::Stats, String>,
+    },
+    /// The Android merge, off the UI thread: the revision it started from, the
+    /// document it belongs to and the store it worked on.
+    #[cfg(target_os = "android")]
+    Staged {
+        revision: u64,
+        uri: String,
+        purpose: crate::shared::platform::saf::Purpose,
+        store: Box<crate::shared::storage::Store>,
+        result: Result<crate::settings::app::backup::Stats, String>,
+    },
     Installed(Result<std::path::PathBuf, String>),
     Browsers(Vec<&'static str>),
     BrowserCookies(&'static str, Result<String, String>),

@@ -25,25 +25,44 @@ impl Jondo {
     #[cfg(not(target_os = "android"))]
     pub(crate) fn backup_now(
         &mut self,
+        job: backup::Job,
         revision: u64,
         store: crate::shared::storage::Store,
         result: Result<backup::Stats, String>,
         cx: &mut gpui::Context<Self>,
     ) {
         self.backup_running = false;
+        self.backup_job = None;
         let Some((store, changed)) = accept_backup(self.store_revision, revision, store, &result)
         else {
             // The library moved while the pass ran. A good pass starts again
             // from the newer store; a failed one waits for the next watch.
             if result.is_ok() {
-                self.start_backup(cx);
+                self.start_backup(job, cx);
             }
 
             return;
         };
 
-        if let Err(error) = &result {
-            log::warn!("backup: {error}");
+        match &result {
+            Err(error) => {
+                log::warn!("backup: {error}");
+                if job.visible() {
+                    self.fail(error.clone());
+                }
+            }
+            Ok(stats) if job.visible() => {
+                let label = match job {
+                    backup::Job::Reload => t("Backup reloaded"),
+                    _ => t("Backup saved"),
+                };
+                if stats.changed() > 0 {
+                    self.notify(format!("{label} · {} changes", stats.changed()));
+                } else {
+                    self.notify(label);
+                }
+            }
+            Ok(_) => {}
         }
 
         self.store = store;
@@ -56,7 +75,7 @@ impl Jondo {
     }
 
     #[cfg(not(target_os = "android"))]
-    pub(crate) fn tick_backup(&mut self, cx: &gpui::App) -> bool {
+    pub(crate) fn tick_backup(&mut self, cx: &mut gpui::Context<Self>) -> bool {
         if !self.store.sync_auto || self.store.sync_folder.trim().is_empty() || self.backup_running
         {
             return false;
@@ -71,7 +90,7 @@ impl Jondo {
                 self.sync_first = None;
                 self.sync_armed = None;
                 self.sync_watch = Some(now + SYNC_WATCH);
-                return self.start_backup(cx);
+                return self.start_backup(backup::Job::Auto, cx);
             }
 
             return false;
@@ -82,7 +101,7 @@ impl Jondo {
         let watch = *self.sync_watch.get_or_insert(now + SYNC_WATCH);
         if now >= watch {
             self.sync_watch = Some(now + SYNC_WATCH);
-            return self.start_backup(cx);
+            return self.start_backup(backup::Job::Auto, cx);
         }
 
         false
@@ -92,24 +111,31 @@ impl Jondo {
     /// mount, and its stat, read and write must never hold a frame. The settle
     /// check is the pass's own first step.
     #[cfg(not(target_os = "android"))]
-    pub(crate) fn start_backup(&mut self, _cx: &gpui::App) -> bool {
+    pub(crate) fn start_backup(&mut self, job: backup::Job, cx: &mut gpui::Context<Self>) -> bool {
         if self.store.sync_folder.trim().is_empty() {
             return false;
         }
 
         self.backup_running = true;
+        self.backup_job = Some(job);
+        cx.notify();
         let revision = self.store_revision;
         let mut snapshot = self.store.clone();
         self.jobs.blocking(move || {
-            let result = backup::auto(&mut snapshot);
-            Event::Backup(revision, Box::new(snapshot), result)
+            let result = job.run(&mut snapshot);
+            Event::Backup {
+                revision,
+                job,
+                store: Box::new(snapshot),
+                result,
+            }
         });
         false
     }
 
     /// Reads the document once so the sessions sealed with a fresh pass reach
     /// this device, without waiting for the next save.
-    pub(crate) fn reimport(&mut self, cx: &gpui::App) {
+    pub(crate) fn reimport(&mut self, cx: &mut gpui::Context<Self>) {
         if self.store.sync_folder.trim().is_empty() {
             return;
         }
@@ -117,13 +143,15 @@ impl Jondo {
         #[cfg(target_os = "android")]
         {
             let _ = cx;
-            self.start_pass(true);
+            if !self.saf.busy() && !self.backup_running {
+                self.start_pass(true);
+            }
         }
 
         #[cfg(not(target_os = "android"))]
         {
             if !self.backup_running {
-                self.start_backup(cx);
+                self.start_backup(backup::Job::Save, cx);
             }
         }
     }
@@ -143,7 +171,7 @@ impl Jondo {
             return true;
         }
 
-        if self.saf.busy() {
+        if self.saf.busy() || self.backup_running {
             return false;
         }
 
@@ -191,7 +219,7 @@ impl Jondo {
         self.saf.pick(pick, &last);
     }
 
-    pub fn backup(&mut self, mode: backup::Mode, cx: &gpui::App) {
+    pub fn backup(&mut self, mode: backup::Mode, cx: &mut gpui::Context<Self>) {
         #[cfg(target_os = "android")]
         let _ = cx;
         if self.store.sync_folder.trim().is_empty() {
@@ -201,6 +229,10 @@ impl Jondo {
 
         #[cfg(target_os = "android")]
         {
+            if self.saf.busy() || self.backup_running {
+                return;
+            }
+
             match mode {
                 backup::Mode::Newer => self.start_pass(true),
                 backup::Mode::Restore => {
@@ -214,31 +246,21 @@ impl Jondo {
         }
 
         #[cfg(not(target_os = "android"))]
-        let result = match mode {
-            backup::Mode::Restore => backup::restore(&mut self.store),
-            backup::Mode::Newer => backup::save(&mut self.store),
-        };
-
-        #[cfg(not(target_os = "android"))]
-        match result {
-            Ok(stats) => {
-                self.persist(cx);
-                let label = match mode {
-                    backup::Mode::Restore => t("Backup reloaded"),
-                    backup::Mode::Newer => t("Backup saved"),
-                };
-
-                if stats.changed() > 0 {
-                    self.notify(format!("{label} · {} changes", stats.changed()));
-                } else {
-                    self.notify(label);
-                }
+        {
+            if self.backup_running {
+                return;
             }
-            Err(error) => self.fail(error),
+
+            let job = match mode {
+                backup::Mode::Restore => backup::Job::Reload,
+                backup::Mode::Newer => backup::Job::Save,
+            };
+            self.persist(cx);
+            self.start_backup(job, cx);
         }
     }
 
-    pub fn overwrite_backup(&mut self, cx: &gpui::App) {
+    pub fn overwrite_backup(&mut self, cx: &mut gpui::Context<Self>) {
         #[cfg(target_os = "android")]
         let _ = cx;
         if self.store.sync_folder.trim().is_empty() {
@@ -248,26 +270,22 @@ impl Jondo {
 
         #[cfg(target_os = "android")]
         {
+            if self.saf.busy() || self.backup_running {
+                return;
+            }
+
             self.start_pass(true);
             return;
         }
 
         #[cfg(not(target_os = "android"))]
-        match backup::overwrite(&mut self.store) {
-            Ok(stats) => {
-                self.persist(cx);
-                if stats.changed() > 0 {
-                    self.notify(
-                        t("Backup saved").to_owned()
-                            + " · "
-                            + &stats.changed().to_string()
-                            + " changes",
-                    );
-                } else {
-                    self.notify(t("Backup saved"));
-                }
+        {
+            if self.backup_running {
+                return;
             }
-            Err(error) => self.fail(error),
+
+            self.persist(cx);
+            self.start_backup(backup::Job::Overwrite, cx);
         }
     }
 
@@ -394,7 +412,7 @@ impl Jondo {
     }
 
     #[cfg(not(target_os = "android"))]
-    pub(crate) fn adopt_folder(&mut self, path: &Path, cx: &gpui::App) {
+    pub(crate) fn adopt_folder(&mut self, path: &Path, cx: &mut gpui::Context<Self>) {
         self.store.sync_folder = path.display().to_string();
         self.persist(cx);
         self.notify(t("Backup location saved"));

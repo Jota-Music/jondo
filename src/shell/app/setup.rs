@@ -139,6 +139,7 @@ impl Jondo {
             sync_armed: None,
             sync_watch: None,
             #[cfg(not(target_os = "android"))]
+            backup_job: None,
             backup_running: false,
             store_revision: 0,
             #[cfg(target_os = "android")]
@@ -193,7 +194,7 @@ impl Jondo {
 
         app.resume_spotify(cx);
         #[cfg(not(target_os = "android"))]
-        app.start_backup(cx);
+        app.start_backup(crate::settings::app::backup::Job::Auto, cx);
 
         app.wire(window, cx);
         crate::music::library::views::playlists::wire(&mut app, window, cx);

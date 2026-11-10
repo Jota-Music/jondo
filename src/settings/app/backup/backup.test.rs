@@ -289,6 +289,29 @@ fn a_settled_folder_is_a_stat_and_a_change_is_not() {
 }
 
 #[test]
+fn the_overwrite_job_is_the_one_that_replaces_a_document_a_save_refuses() {
+    let folder = scratch("backup-job");
+    fs::write(folder.join(FILE), r#"{"version":2}"#).unwrap();
+
+    let mut store = Store {
+        sync_folder: folder.display().to_string(),
+        ..Default::default()
+    };
+    store.playlists.push(playlist("local:abc", "Mix", 1));
+
+    assert!(
+        Job::Save.run(&mut store).is_err(),
+        "a save refuses a document it cannot read"
+    );
+    assert!(
+        Job::Overwrite.run(&mut store).is_ok(),
+        "the emergency exit writes over it"
+    );
+
+    let _ = fs::remove_dir_all(&folder);
+}
+
+#[test]
 fn the_document_path_stages_and_moves_the_baseline_on_commit() {
     let dir = scratch("backup-stage");
     fs::write(

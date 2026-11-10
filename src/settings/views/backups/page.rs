@@ -33,9 +33,15 @@ pub(crate) fn backups(app: &mut Jondo, narrow: bool, cx: &mut Context<Jondo>) ->
     let pass = app.fields.get("session-pass").cloned();
 
     #[cfg(target_os = "android")]
-    let busy = app.saf.busy();
+    let busy = app.saf.busy() || app.backup_running;
     #[cfg(not(target_os = "android"))]
-    let busy = false;
+    let busy = app.backup_running;
+    // The automatic pass runs every few seconds: painting it would blink the
+    // panel. Only the passes the user asked for get a status line.
+    #[cfg(target_os = "android")]
+    let syncing = busy;
+    #[cfg(not(target_os = "android"))]
+    let syncing = busy && app.backup_job.is_some_and(backup::Job::visible);
 
     let session = session(&pass, cx);
     let files = files(app, narrow, busy, cx);
@@ -80,7 +86,7 @@ pub(crate) fn backups(app: &mut Jondo, narrow: bool, cx: &mut Context<Jondo>) ->
                 cx.notify();
             }),
         ))
-        .child(location(&folder, &name, &status))
+        .child(location(&folder, &name, &status, syncing))
         .child(action(
             "backup-save",
             t("Save now"),

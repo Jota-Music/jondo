@@ -123,8 +123,11 @@ pub struct Jondo {
     pub(crate) sync_armed: Option<Instant>,
     pub(crate) sync_watch: Option<Instant>,
     /// A background backup owns the store snapshot until it answers.
-    #[cfg(not(target_os = "android"))]
     pub(crate) backup_running: bool,
+    /// The pass in flight, so the panel can tell a save the user asked for
+    /// from the automatic one.
+    #[cfg(not(target_os = "android"))]
+    pub(crate) backup_job: Option<crate::settings::app::backup::Job>,
     /// Bumped on every save, so a stale backup result is discarded.
     pub(crate) store_revision: u64,
     #[cfg(target_os = "android")]

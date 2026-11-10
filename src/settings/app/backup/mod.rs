@@ -10,7 +10,7 @@ mod tests;
 
 pub use stage::{committed, failed, restore_staged, stage, stage_dir};
 pub use sync::{
-    Mode, Stats, SyncStatus, auto, export, import, overwrite, pending, restore, save,
+    Job, Mode, Stats, SyncStatus, auto, export, import, overwrite, pending, restore, save,
     settled_document, stamp, touch,
 };
 

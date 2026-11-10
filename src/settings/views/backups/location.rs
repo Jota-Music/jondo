@@ -17,7 +17,7 @@ use super::super::chrome::card;
 
 use super::widgets::*;
 
-pub(super) fn location(folder: &str, name: &str, status: &SyncStatus) -> AnyElement {
+pub(super) fn location(folder: &str, name: &str, status: &SyncStatus, syncing: bool) -> AnyElement {
     let shown = if folder.is_empty() {
         t("No location selected").to_owned()
     } else {
@@ -61,34 +61,50 @@ pub(super) fn location(folder: &str, name: &str, status: &SyncStatus) -> AnyElem
     let full = folder.to_owned();
     body = body.tooltip(move |window, cx| Tooltip::new(full.clone()).build(window, cx));
 
-    if status.at > 0 {
-        let saved = if status.read_at > 0 {
-            status.read_at
+    let ran = status.at > 0;
+    let saved = if status.read_at > 0 {
+        status.read_at
+    } else {
+        status.at
+    };
+    let dash = || "—".to_owned();
+    let mut stats = div()
+        .mt(theme::unit(2.0))
+        .flex()
+        .flex_col()
+        .gap(theme::unit(4.0))
+        .child(if syncing {
+            syncing_row()
         } else {
-            status.at
-        };
-        let mut stats = div()
-            .mt(theme::unit(2.0))
-            .flex()
-            .flex_col()
-            .gap(theme::unit(4.0))
-            .child(stat(t("Last save"), ago(saved), theme::ZINC_300))
-            .child(stat(t("Size"), size(status.bytes), theme::ZINC_300))
-            .child(stat(
-                t("Playlists in the file"),
-                status.remote.to_string(),
+            stat(
+                t("Last save"),
+                if ran { ago(saved) } else { dash() },
                 theme::ZINC_300,
-            ));
-        if status.imported > 0 {
-            stats = stats.child(stat(
-                t("Imported"),
-                format!("+{}", status.imported),
-                theme::GREEN,
-            ));
-        }
-
-        body = body.child(stats);
+            )
+        })
+        .child(stat(
+            t("Size"),
+            if ran { size(status.bytes) } else { dash() },
+            theme::ZINC_300,
+        ))
+        .child(stat(
+            t("Playlists in the file"),
+            if ran {
+                status.remote.to_string()
+            } else {
+                dash()
+            },
+            theme::ZINC_300,
+        ));
+    if status.imported > 0 {
+        stats = stats.child(stat(
+            t("Imported"),
+            format!("+{}", status.imported),
+            theme::GREEN,
+        ));
     }
+
+    body = body.child(stats);
 
     if status.sealed {
         body = body.child(text::text(

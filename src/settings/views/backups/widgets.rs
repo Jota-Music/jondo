@@ -3,8 +3,9 @@ use gpui::{
     InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled, Window, div,
 };
 
+use crate::shared::i18n::t;
 use crate::shared::kernel::app::clock::now_ms;
-use crate::shared::ui::views::components::text;
+use crate::shared::ui::views::components::{button, surface, text};
 use crate::shared::ui::views::design::icons::{self, Icon};
 use crate::shared::ui::views::design::theme;
 use crate::shell::app::Jondo;
@@ -24,11 +25,7 @@ pub(crate) fn heading(icon: Icon, title: &str) -> gpui::Div {
 }
 
 pub(crate) fn row(left: gpui::Div, right: impl IntoElement) -> gpui::Div {
-    div()
-        .rounded(theme::unit(12.0))
-        .border_1()
-        .border_color(theme::ZINC_800)
-        .bg(theme::SURFACE)
+    surface(12.0, theme::SURFACE, theme::ZINC_800)
         .p(theme::unit(12.0))
         .child(line(left, right))
 }
@@ -95,6 +92,25 @@ pub(crate) fn stat(label: &str, value: String, color: gpui::Rgba) -> gpui::Div {
         .gap(theme::unit(12.0))
         .child(text::text(label.to_owned(), 11.0, theme::FAINT))
         .child(text::numeric(value, 11.0, color))
+}
+
+/// The "Last save" row while a pass runs, so the panel says what it is doing
+/// in the place the answer will land instead of growing a line.
+pub(crate) fn syncing_row() -> gpui::Div {
+    div()
+        .flex()
+        .items_center()
+        .justify_between()
+        .gap(theme::unit(12.0))
+        .child(text::text(t("Last save"), 11.0, theme::FAINT))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(theme::unit(4.0))
+                .child(button::spinner(11.0, theme::MUTED))
+                .child(text::text(t("Syncing…"), 11.0, theme::MUTED)),
+        )
 }
 
 pub(crate) fn ago(at: i64) -> String {

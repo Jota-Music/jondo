@@ -42,11 +42,22 @@ impl Jondo {
                 | Event::BrowserRefresh(_, _)
                 | Event::CookiesFile(_)) => self.system_event(event, cx),
                 #[cfg(not(target_os = "android"))]
-                Event::Backup(revision, store, result) => {
-                    self.backup_now(revision, *store, result, cx)
-                }
+                Event::Backup {
+                    revision,
+                    job,
+                    store,
+                    result,
+                } => self.backup_now(job, revision, *store, result, cx),
                 #[cfg(target_os = "android")]
-                Event::Backup(..) => {}
+                Event::Backup { .. } => {}
+                #[cfg(target_os = "android")]
+                Event::Staged {
+                    revision,
+                    uri,
+                    purpose,
+                    store,
+                    result,
+                } => self.staged(revision, uri, purpose, *store, result, cx),
                 #[cfg(not(target_os = "android"))]
                 Event::Folder(path) => {
                     if let Some(path) = path

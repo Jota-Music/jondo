@@ -1,3 +1,4 @@
+use crate::shared::i18n::t;
 use crate::shell::app::Jondo;
 
 /// Preferences the panels write. The store is the app's, so the views ask for
@@ -38,14 +39,21 @@ impl Jondo {
         self.persist(cx);
     }
 
-    pub fn set_session_pass(&mut self, pass: String, cx: &gpui::App) {
+    pub fn set_session_pass(&mut self, pass: String, cx: &mut gpui::Context<Self>) {
         if pass == self.store.session_pass {
             return;
         }
 
+        let sealing = !pass.trim().is_empty();
         self.store.session_pass = pass;
         self.library_changed(cx);
-        if !self.store.session_pass.trim().is_empty() {
+        self.notify(if sealing {
+            t("Session pass saved")
+        } else {
+            t("Session encryption off")
+        });
+        cx.notify();
+        if sealing {
             self.reimport(cx);
         }
     }

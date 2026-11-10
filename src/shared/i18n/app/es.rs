@@ -134,6 +134,9 @@ pub(super) fn spanish(key: &str) -> &str {
             "El fichero lleva la dirección de tu relay y su token en claro, así que cualquiera que pueda abrirlo puede usarlos."
         }
         "Session encryption" => "Cifrado de sesiones",
+        "Session pass saved" => "Contraseña de sesión guardada",
+        "Session encryption off" => "Cifrado de sesiones desactivado",
+        "Syncing…" => "Sincronizando…",
         "Same pass on every device" => "La misma contraseña en todos los dispositivos",
         "When set, the YouTube and Spotify sessions are encrypted and synced through the backup. Leave empty to keep them local only." => {
             "Con contraseña, las sesiones de YouTube y Spotify se cifran y viajan en el backup. Déjala vacía para mantenerlas solo en este dispositivo."

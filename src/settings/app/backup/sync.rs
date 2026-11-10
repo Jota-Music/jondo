@@ -22,6 +22,32 @@ pub enum Mode {
     Restore,
 }
 
+/// The pass that runs, and why. It travels with the event so the panel only
+/// paints a status for the passes the user asked for: the automatic one runs
+/// every few seconds and would blink a label on and off.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Job {
+    Auto,
+    Save,
+    Reload,
+    Overwrite,
+}
+
+impl Job {
+    pub fn visible(self) -> bool {
+        !matches!(self, Job::Auto)
+    }
+
+    pub fn run(self, store: &mut Store) -> Result<Stats, String> {
+        match self {
+            Job::Auto => auto(store),
+            Job::Save => save(store),
+            Job::Reload => restore(store),
+            Job::Overwrite => overwrite(store),
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct Stats {
     pub bytes: usize,
