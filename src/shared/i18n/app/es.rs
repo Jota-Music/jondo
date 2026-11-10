@@ -5,6 +5,15 @@ pub(super) fn spanish(key: &str) -> &str {
         "Account" => "Cuenta",
         "Language" => "Idioma",
         "Background memory" => "Memoria en segundo plano",
+        "Playback" => "Reproducción",
+        "Pause when headphones disconnect" => "Pausar al desconectar los auriculares",
+        "Stop when audio falls back to the phone speaker, like a Bluetooth or wired disconnect." => {
+            "Detén la reproducción cuando el audio pase al altavoz del teléfono, como al desconectar Bluetooth o el cable."
+        }
+        "Pause when other apps take audio" => "Pausar cuando otra app use el audio",
+        "Stop for calls and other apps that start playing audio." => {
+            "Detén la reproducción durante llamadas y cuando otra app empiece a sonar."
+        }
         "Rooms" => "Salas",
         "About" => "Acerca de",
         "Backups" => "Copias de seguridad",

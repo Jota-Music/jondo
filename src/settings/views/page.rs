@@ -15,6 +15,8 @@ use super::account::account;
 use super::backups::{backups, logs};
 #[cfg(not(target_os = "android"))]
 use super::preferences::memory;
+#[cfg(target_os = "android")]
+use super::preferences::playback;
 use super::preferences::{about, discord, language, relay};
 
 pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> AnyElement {
@@ -51,6 +53,11 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> An
         .child(account(app, window, cx))
         .child(language(app, cx))
         .child(discord(app, cx));
+
+    #[cfg(target_os = "android")]
+    {
+        page = page.child(playback(app, cx));
+    }
 
     #[cfg(not(target_os = "android"))]
     {
@@ -106,6 +113,7 @@ pub fn overlay(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) ->
         {
             app.ui.backup_sheet = false;
             app.ui.backup_closing = None;
+            cx.notify();
         }
 
         if !app.ui.backup_sheet {

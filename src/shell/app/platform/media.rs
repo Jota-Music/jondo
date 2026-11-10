@@ -9,6 +9,7 @@ static ACTIONS: Mutex<VecDeque<MediaAction>> = Mutex::new(VecDeque::new());
 static SEEK: Mutex<Option<f64>> = Mutex::new(None);
 static PUSHED: Mutex<Option<(String, String, u64, bool)>> = Mutex::new(None);
 static STATE: Mutex<Option<(bool, u64)>> = Mutex::new(None);
+static PREFS: Mutex<Option<(bool, bool)>> = Mutex::new(None);
 
 /// The notification shade, the lock screen and headphone buttons all go through
 /// the system media session, so the app has to answer with the same controls
@@ -33,6 +34,8 @@ pub fn install() {
 /// Called from the frame tick: applies what the system controls asked for and
 /// republishes the current track.
 pub fn sync(app: &mut Jondo, cx: &mut gpui::Context<Jondo>) {
+    apply(app);
+
     let actions: Vec<MediaAction> = match ACTIONS.lock() {
         Ok(mut queue) => queue.drain(..).collect(),
         Err(_) => Vec::new(),
@@ -55,6 +58,34 @@ pub fn sync(app: &mut Jondo, cx: &mut gpui::Context<Jondo>) {
     }
 
     publish(app, cx);
+}
+
+fn apply(app: &Jondo) {
+    let prefs = (app.store.pause_on_disconnect, app.store.pause_on_focus);
+    let changed = match PREFS.lock() {
+        Ok(mut last) => {
+            if last.as_ref() == Some(&prefs) {
+                false
+            } else {
+                *last = Some(prefs);
+                true
+            }
+        }
+        Err(_) => false,
+    };
+    if !changed {
+        return;
+    }
+
+    let flag = |on: bool| if on { "1" } else { "0" };
+    if let Err(error) = crate::shared::platform::android::java::call(
+        "com/jondo/jondo/MainActivity",
+        "preferences",
+        "(Landroid/app/Activity;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;",
+        &[flag(prefs.0), flag(prefs.1)],
+    ) {
+        log::warn!("media preferences: {error}");
+    }
 }
 
 fn publish(app: &Jondo, cx: &gpui::App) {

@@ -63,6 +63,13 @@
             android:foregroundServiceType="dataSync"
         />
 
+        <!-- Notification transport buttons. The app has no playback service, so
+             MediaButtonReceiver cannot deliver them; this receiver forwards the
+             action to the JNI bridge. -->
+        <receiver
+            android:name="dev.gpui.mobile.GpuiMediaAction"
+            android:exported="false" />
+
         <!-- Share logs, cookies and the downloaded APK without exposing filesDir. -->
         <provider
             android:name="androidx.core.content.FileProvider"

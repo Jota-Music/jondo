@@ -30,4 +30,12 @@ public class MainActivity extends dev.gpui.mobile.GpuiActivity {
         activity.runOnUiThread(() -> activity.moveTaskToBack(true));
         return "";
     }
+
+    public static String preferences(Activity activity, String pauseOnDisconnect, String pauseOnFocus) {
+        dev.gpui.mobile.GpuiMediaSession.setPreferences(
+                "1".equals(pauseOnDisconnect),
+                "1".equals(pauseOnFocus)
+        );
+        return "";
+    }
 }

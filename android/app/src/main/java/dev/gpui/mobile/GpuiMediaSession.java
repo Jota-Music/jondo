@@ -7,8 +7,13 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.media.AudioAttributes;
+import android.media.AudioFocusRequest;
+import android.media.AudioManager;
 import android.os.Build;
 import android.support.v4.media.MediaMetadataCompat;
 import android.support.v4.media.session.MediaSessionCompat;
@@ -16,7 +21,7 @@ import android.support.v4.media.session.PlaybackStateCompat;
 import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
-import androidx.media.session.MediaButtonReceiver;
+import androidx.core.content.ContextCompat;
 
 /**
  * Manages an Android MediaSession for audio/video playback.
@@ -45,6 +50,16 @@ public class GpuiMediaSession {
     private static NotificationManager sNotificationManager;
     private static Activity sActivity;
 
+    private static boolean sPauseOnDisconnect = true;
+    private static boolean sPauseOnFocus = true;
+    private static boolean sFocusHeld;
+    private static boolean sPausedByFocus;
+    private static boolean sResumeOnGain;
+    private static AudioManager sAudioManager;
+    private static AudioFocusRequest sFocusRequest;
+    private static BroadcastReceiver sNoisyReceiver;
+    private static android.os.Handler sCallbackHandler;
+
     /**
      * Initialize the media session. Call once when playback starts.
      *
@@ -53,6 +68,7 @@ public class GpuiMediaSession {
     public static void init(Activity activity) {
         if (sSession != null) return;
         sActivity = activity;
+        sAudioManager = (AudioManager) activity.getSystemService(Context.AUDIO_SERVICE);
         try {
         sSession = new MediaSessionCompat(activity, "GpuiMediaSession");
         sSession.setFlags(
@@ -62,24 +78,31 @@ public class GpuiMediaSession {
 
         // The session builds its own Handler, and the Rust side calls this from
         // a native thread without a Looper. Pin the callbacks to the UI thread.
-        android.os.Handler callbackHandler =
-                new android.os.Handler(android.os.Looper.getMainLooper());
+        sCallbackHandler = new android.os.Handler(android.os.Looper.getMainLooper());
         sSession.setCallback(new MediaSessionCompat.Callback() {
             @Override
             public void onPlay() {
                 Log.i(TAG, "MediaSession callback: onPlay");
+                sPausedByFocus = false;
+                sResumeOnGain = false;
                 nativeMediaAction("play");
             }
 
             @Override
             public void onPause() {
                 Log.i(TAG, "MediaSession callback: onPause");
+                sPausedByFocus = false;
+                sResumeOnGain = false;
+                abandonFocus();
                 nativeMediaAction("pause");
             }
 
             @Override
             public void onStop() {
                 Log.i(TAG, "MediaSession callback: onStop");
+                sPausedByFocus = false;
+                sResumeOnGain = false;
+                abandonFocus();
                 nativeMediaAction("stop");
             }
 
@@ -100,9 +123,34 @@ public class GpuiMediaSession {
                 Log.i(TAG, "MediaSession callback: onSeekTo " + pos);
                 nativeMediaSeek(pos);
             }
-        }, callbackHandler);
+        }, sCallbackHandler);
 
         sSession.setActive(true);
+
+        sNoisyReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (sPauseOnDisconnect
+                        && sPlaying
+                        && AudioManager.ACTION_AUDIO_BECOMING_NOISY.equals(intent.getAction())) {
+                    sPausedByFocus = false;
+                    sResumeOnGain = false;
+                    nativeMediaAction("pause");
+                }
+            }
+        };
+        activity.runOnUiThread(() -> {
+            try {
+                ContextCompat.registerReceiver(
+                        activity,
+                        sNoisyReceiver,
+                        new IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY),
+                        ContextCompat.RECEIVER_NOT_EXPORTED
+                );
+            } catch (Throwable error) {
+                Log.e(TAG, "Failed to register the noisy receiver", error);
+            }
+        });
 
         // Create notification channel (API 26+)
         sNotificationManager = (NotificationManager) activity.getSystemService(Context.NOTIFICATION_SERVICE);
@@ -120,6 +168,88 @@ public class GpuiMediaSession {
         Log.i(TAG, "MediaSession initialized");
         } catch (Throwable error) {
             Log.e(TAG, "MediaSession init failed", error);
+        }
+    }
+
+    /**
+     * Apply the user's interruption preferences. Disabling focus handling also
+     * gives the focus back, so another app can take over without waiting.
+     */
+    public static void setPreferences(boolean pauseOnDisconnect, boolean pauseOnFocus) {
+        sPauseOnDisconnect = pauseOnDisconnect;
+        sPauseOnFocus = pauseOnFocus;
+        if (!sPauseOnFocus) {
+            sPausedByFocus = false;
+            sResumeOnGain = false;
+            abandonFocus();
+        } else if (sPlaying) {
+            requestFocus();
+        }
+    }
+
+    private static boolean requestFocus() {
+        if (!sPauseOnFocus || sFocusHeld) {
+            return true;
+        }
+        if (sAudioManager == null || sCallbackHandler == null) {
+            return true;
+        }
+
+        AudioAttributes attributes = new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                .build();
+        sFocusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                .setAudioAttributes(attributes)
+                .setOnAudioFocusChangeListener(GpuiMediaSession::onFocusChange, sCallbackHandler)
+                .build();
+        sFocusHeld = sAudioManager.requestAudioFocus(sFocusRequest)
+                == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
+        if (!sFocusHeld) {
+            Log.w(TAG, "Audio focus was denied");
+        }
+        return sFocusHeld;
+    }
+
+    private static void abandonFocus() {
+        if (sAudioManager != null && sFocusRequest != null && sFocusHeld) {
+            sAudioManager.abandonAudioFocusRequest(sFocusRequest);
+        }
+        sFocusHeld = false;
+        sFocusRequest = null;
+    }
+
+    private static void onFocusChange(int change) {
+        switch (change) {
+            case AudioManager.AUDIOFOCUS_LOSS:
+                sPausedByFocus = true;
+                sResumeOnGain = false;
+                abandonFocus();
+                if (sPlaying) {
+                    nativeMediaAction("pause");
+                }
+                break;
+
+            case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT:
+                sPausedByFocus = true;
+                sResumeOnGain = sPlaying;
+                if (sPlaying) {
+                    nativeMediaAction("pause");
+                }
+                break;
+
+            case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK:
+                break;
+
+            case AudioManager.AUDIOFOCUS_GAIN: {
+                boolean resume = sResumeOnGain;
+                sPausedByFocus = false;
+                sResumeOnGain = false;
+                if (resume) {
+                    nativeMediaAction("play");
+                }
+                break;
+            }
         }
     }
 
@@ -194,6 +324,17 @@ public class GpuiMediaSession {
                 .build();
 
         sPlaying = isPlaying;
+        if (isPlaying) {
+            sPausedByFocus = false;
+            if (!requestFocus()) {
+                sPlaying = false;
+                nativeMediaAction("pause");
+                return;
+            }
+        } else if (!sPausedByFocus) {
+            sResumeOnGain = false;
+            abandonFocus();
+        }
         sSession.setPlaybackState(playbackState);
         updateNotification(isPlaying);
     }
@@ -240,22 +381,19 @@ public class GpuiMediaSession {
                     .addAction(new NotificationCompat.Action(
                             android.R.drawable.ic_media_previous,
                             "Previous",
-                            MediaButtonReceiver.buildMediaButtonPendingIntent(
-                                    sActivity, PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS)
+                            actionIntent("previous")
                     ))
                     // Play / Pause
                     .addAction(new NotificationCompat.Action(
                             isPlaying ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play,
                             isPlaying ? "Pause" : "Play",
-                            MediaButtonReceiver.buildMediaButtonPendingIntent(
-                                    sActivity, PlaybackStateCompat.ACTION_PLAY_PAUSE)
+                            actionIntent(isPlaying ? "pause" : "play")
                     ))
                     // Next
                     .addAction(new NotificationCompat.Action(
                             android.R.drawable.ic_media_next,
                             "Next",
-                            MediaButtonReceiver.buildMediaButtonPendingIntent(
-                                    sActivity, PlaybackStateCompat.ACTION_SKIP_TO_NEXT)
+                            actionIntent("next")
                     ));
 
             sNotificationManager.notify(NOTIFICATION_ID, builder.build());
@@ -265,9 +403,40 @@ public class GpuiMediaSession {
     }
 
     /**
+     * A notification button that reports the action through {@link GpuiMediaAction}.
+     */
+    private static PendingIntent actionIntent(String action) {
+        Intent intent = new Intent(sActivity, GpuiMediaAction.class);
+        intent.putExtra(GpuiMediaAction.EXTRA, action);
+        return PendingIntent.getBroadcast(
+                sActivity,
+                action.hashCode(),
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+    }
+
+    /**
+     * Called by {@link GpuiMediaAction} when a notification button is pressed.
+     */
+    static void dispatch(String action) {
+        if (sSession == null) return;
+        nativeMediaAction(action);
+    }
+
+    /**
      * Release the media session and dismiss the notification.
      */
     public static void release() {
+        abandonFocus();
+        if (sNoisyReceiver != null && sActivity != null) {
+            try {
+                sActivity.unregisterReceiver(sNoisyReceiver);
+            } catch (Exception error) {
+                Log.w(TAG, "Failed to unregister the noisy receiver", error);
+            }
+        }
+        sNoisyReceiver = null;
         if (sSession != null) {
             sSession.setActive(false);
             sSession.release();
@@ -277,6 +446,11 @@ public class GpuiMediaSession {
             sNotificationManager.cancel(NOTIFICATION_ID);
             sNotificationManager = null;
         }
+        sPlaying = false;
+        sPausedByFocus = false;
+        sResumeOnGain = false;
+        sAudioManager = null;
+        sCallbackHandler = null;
         sActivity = null;
         Log.i(TAG, "MediaSession released");
     }

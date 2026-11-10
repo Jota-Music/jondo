@@ -6,9 +6,7 @@ use gpui::{
 
 use crate::music::rooms::{self, Status, TokenState};
 use crate::shared::i18n::{self, t};
-#[cfg(not(target_os = "android"))]
-use crate::shared::ui::views::components::switch;
-use crate::shared::ui::views::components::{button, text};
+use crate::shared::ui::views::components::{button, switch, text};
 use crate::shared::ui::views::design::icons::{self, Icon};
 use crate::shared::ui::views::design::theme;
 use crate::shell::app::Jondo;
@@ -26,7 +24,6 @@ pub(super) fn language(app: &mut Jondo, cx: &mut Context<Jondo>) -> AnyElement {
     };
 
     let open = app
-        .ui
         .menu
         .as_ref()
         .is_some_and(|menu| menu.origin == Some("settings-language"));
@@ -56,7 +53,7 @@ pub(super) fn language(app: &mut Jondo, cx: &mut Context<Jondo>) -> AnyElement {
                     border: theme::ZINC_800,
                 },
                 cx.listener(|app, event: &gpui::ClickEvent, _, cx| {
-                    app.ui.menu = Some(
+                    app.menu = Some(
                         Menu::choice(
                             event.position(),
                             t("Language"),
@@ -64,7 +61,7 @@ pub(super) fn language(app: &mut Jondo, cx: &mut Context<Jondo>) -> AnyElement {
                         )
                         .origin("settings-language"),
                     );
-                    cx.notify();
+                    app.notify_shell(cx);
                 }),
             )),
     )
@@ -102,6 +99,69 @@ pub(super) fn discord(app: &mut Jondo, cx: &mut Context<Jondo>) -> AnyElement {
             ),
         )
     }
+}
+
+#[cfg(target_os = "android")]
+pub(super) fn playback(app: &mut Jondo, cx: &mut Context<Jondo>) -> AnyElement {
+    section(
+        Icon::Headphones,
+        t("Playback"),
+        None,
+        div()
+            .flex()
+            .flex_col()
+            .gap(theme::unit(16.0))
+            .child(toggle(
+                "pause-disconnect",
+                "Pause when headphones disconnect",
+                "Stop when audio falls back to the phone speaker, like a Bluetooth or wired disconnect.",
+                app.store.pause_on_disconnect,
+                app.accent,
+                cx.listener(|app, value: &bool, _, cx| {
+                    app.set_pause_on_disconnect(*value, cx);
+                    cx.notify();
+                }),
+            ))
+            .child(toggle(
+                "pause-focus",
+                "Pause when other apps take audio",
+                "Stop for calls and other apps that start playing audio.",
+                app.store.pause_on_focus,
+                app.accent,
+                cx.listener(|app, value: &bool, _, cx| {
+                    app.set_pause_on_focus(*value, cx);
+                    cx.notify();
+                }),
+            )),
+    )
+}
+
+#[cfg(target_os = "android")]
+fn toggle(
+    id: &'static str,
+    title: &'static str,
+    body: &'static str,
+    checked: bool,
+    accent: gpui::Rgba,
+    change: impl Fn(&bool, &mut Window, &mut gpui::App) + 'static,
+) -> AnyElement {
+    div()
+        .flex()
+        .items_start()
+        .justify_between()
+        .gap(theme::unit(12.0))
+        .child(
+            div()
+                .flex_1()
+                .min_w(theme::unit(0.0))
+                .flex()
+                .flex_col()
+                .gap(theme::unit(4.0))
+                .child(text::text(t(title), 13.0, theme::ZINC_100))
+                .child(text::text(t(body), 12.0, theme::FAINT)),
+        )
+        .child(switch(id, checked, accent, change))
+        .into_any_element()
 }
 
 /// The native counterpart of Jota's idle reload: there is no WebView to reload,
@@ -418,7 +478,6 @@ fn note(icon: Icon, color: gpui::Rgba, body: impl Into<gpui::SharedString>) -> g
 }
 
 pub(super) fn about(app: &mut Jondo, cx: &mut Context<Jondo>) -> AnyElement {
-    app.ensure_update(cx);
     let version = env!("CARGO_PKG_VERSION");
     let update = app.settings.read(cx).update.clone();
 

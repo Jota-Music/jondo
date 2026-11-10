@@ -28,6 +28,16 @@ impl Jondo {
         self.persist(cx);
     }
 
+    pub fn set_pause_on_disconnect(&mut self, on: bool, cx: &gpui::App) {
+        self.store.pause_on_disconnect = on;
+        self.persist(cx);
+    }
+
+    pub fn set_pause_on_focus(&mut self, on: bool, cx: &gpui::App) {
+        self.store.pause_on_focus = on;
+        self.persist(cx);
+    }
+
     pub fn set_session_pass(&mut self, pass: String, cx: &gpui::App) {
         if pass == self.store.session_pass {
             return;
@@ -35,5 +45,8 @@ impl Jondo {
 
         self.store.session_pass = pass;
         self.library_changed(cx);
+        if !self.store.session_pass.trim().is_empty() {
+            self.reimport(cx);
+        }
     }
 }

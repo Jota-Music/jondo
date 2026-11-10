@@ -107,8 +107,7 @@ public class GpuiActivity extends GpuiInputActivity {
             case KeyEvent.KEYCODE_MEDIA_PREVIOUS:
             case KeyEvent.KEYCODE_MEDIA_STOP:
             case KeyEvent.KEYCODE_HEADSETHOOK:
-                // Route media buttons through the MediaSession.
-                // MediaButtonReceiver will dispatch to our session callback.
+                // The active MediaSession receives media buttons directly.
                 return super.dispatchKeyEvent(event);
 
             default:
