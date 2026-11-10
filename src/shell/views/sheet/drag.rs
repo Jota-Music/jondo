@@ -1,6 +1,7 @@
+use std::cell::RefCell;
 use std::time::{Duration, Instant};
 
-use gpui::ElementId;
+use gpui::{App, ElementId, Pixels, Point, ScrollEvent, ScrollSource, TouchPhase};
 
 use super::state::*;
 /// How long the sheet takes to slide in, and how long the caller keeps it
@@ -172,6 +173,53 @@ pub(super) fn absorb(id: &ElementId, on: bool) {
 
 pub(super) fn absorbing(id: &ElementId) -> bool {
     STATES.with(|states| states.borrow().get(id).is_some_and(|state| state.absorb))
+}
+
+/// How long a pan a sheet took keeps its claim after the sheet is gone. The
+/// recognizer runs a release into momentum on frames of its own, and every
+/// step of that coast carries only where the pan started, so the claim is
+/// renewed for as long as the steps keep coming and lapses once they stop.
+const KEPT: Duration = Duration::from_secs(1);
+
+thread_local! {
+    /// Where the last pan on a sheet layer started. It outlives the sheet on
+    /// purpose: the momentum of a dismiss belongs to the sheet that took it,
+    /// not to the page the sheet was covering.
+    static PAN: RefCell<Option<(Point<Pixels>, Instant)>> = const { RefCell::new(None) };
+}
+
+/// Keeps the rest of a pan for the sheet: the page must not scroll with what
+/// the release left coasting.
+pub(super) fn keep(position: Point<Pixels>) {
+    PAN.with(|pan| *pan.borrow_mut() = Some((position, Instant::now())));
+}
+
+/// Drops the coasting steps of a pan a sheet already took, before the page's
+/// scrollables read them. A page mounts this ahead of its content.
+pub fn leftover(event: &ScrollEvent, cx: &mut App) {
+    if event.source == ScrollSource::Touch
+        && event.touch_phase != TouchPhase::Started
+        && kept(event.position)
+    {
+        cx.stop_propagation();
+    }
+}
+
+fn kept(position: Point<Pixels>) -> bool {
+    PAN.with(|pan| {
+        let mut pan = pan.borrow_mut();
+        let Some((at, since)) = *pan else {
+            return false;
+        };
+
+        if at != position || since.elapsed() > KEPT {
+            *pan = None;
+            return false;
+        }
+
+        *pan = Some((at, Instant::now()));
+        true
+    })
 }
 
 pub(super) fn measure(id: &ElementId, height: f32) {

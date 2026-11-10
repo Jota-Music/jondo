@@ -18,6 +18,7 @@ use crate::shell::views::clipboard;
 use crate::shell::views::header;
 use crate::shell::views::menu;
 use crate::shell::views::nav;
+use crate::shell::views::sheet;
 use crate::shell::views::update;
 
 use super::chrome::{bottom, resize_bands, safe_area, system};
@@ -91,6 +92,8 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> im
 
     // Overlays live in the area between the header and the phone navigation,
     // so a sheet's bottom edge lands on the nav instead of sliding under it.
+    // This layer also reads pans first: the coast a dismissed sheet left
+    // behind is dropped here, before the page under it can scroll with it.
     let (inset_top, inset_bottom, _, _) = safe_area();
     root = root.child(
         div()
@@ -102,6 +105,7 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> im
                 inset_bottom + if narrow { theme::NAV_HEIGHT } else { 0.0 },
             ))
             .overflow_hidden()
+            .on_scroll(|event, _, cx| sheet::leftover(event, cx))
             .child(player::overlay(app, window, cx))
             .child(player::queue(app, window, cx))
             .child(playlists::show(app, window, cx))

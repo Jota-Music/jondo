@@ -277,6 +277,11 @@ impl Sheet {
                         return;
                     }
 
+                    // The sheet keeps the pan from here on: the momentum the
+                    // release leaves behind must not scroll the page once the
+                    // sheet is gone, so its start is remembered for the coast.
+                    keep(event.position);
+
                     // The scrim covers the page, so a touch pan while a sheet
                     // is up belongs to this layer: it either scrolls the modal
                     // body or pulls the sheet. Saying so keeps the page out of
@@ -423,18 +428,18 @@ impl Sheet {
             .id(ElementId::Name(format!("{id}-panel").into()))
             .track_focus(&focus)
             .focus_trap(id.clone(), &focus)
-            // A dialog on a wide window is dragged by its own surface: a press
-            // on it never reaches the wrapper, which only centres it, because
-            // the panel occludes the window.
-            .when(!mobile, move |this| {
-                this.on_mouse_down(MouseButton::Left, press_panel)
-                    .on_drag(Grab, move |_, _, _, cx| {
-                        begin(&id_begin);
-                        cx.new(|_| Grab)
-                    })
-                    .on_drag_move::<Grab>(moved)
-                    .child(mouse_up)
-            });
+            // The sheet is dragged by its own surface with a pointer on either
+            // layout: a press on it never reaches the wrapper, because the
+            // panel occludes it. A finger has no mouse drag and takes the
+            // gesture through the handle strip and the pan canvas instead, so
+            // this only arms for a mouse.
+            .on_mouse_down(MouseButton::Left, press_panel)
+            .on_drag(Grab, move |_, _, _, cx| {
+                begin(&id_begin);
+                cx.new(|_| Grab)
+            })
+            .on_drag_move::<Grab>(moved)
+            .child(mouse_up);
 
         let backdrop = div()
             .absolute()

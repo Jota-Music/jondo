@@ -10,6 +10,7 @@ use std::time::Duration;
 
 use crate::shared::ui::views::design::theme;
 
+pub use drag::leftover;
 pub use header::{Header, header};
 pub use panel::Sheet;
 
