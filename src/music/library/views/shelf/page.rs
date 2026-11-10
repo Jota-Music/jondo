@@ -1,10 +1,13 @@
 use std::rc::Rc;
 
-use gpui::{AnyElement, Context, IntoElement, ParentElement, Styled, Window, div};
+use gpui::{
+    Context, InteractiveElement, IntoElement, ParentElement, Styled, Window, div, uniform_list,
+};
 
 use crate::music::library::views::playlist::{card, row};
 use crate::shared::music::domain::{Follow, Playlist};
-use crate::shared::ui::views::components::{grid, loading};
+use crate::shared::music::views::cover;
+use crate::shared::ui::views::components::{grid, loading, scroll};
 use crate::shared::ui::views::design::theme;
 use crate::shell::app::{Filter, Jondo, SpotifyState};
 
@@ -85,10 +88,6 @@ fn render(
     cx: &mut Context<Jondo>,
     scope: Scope,
 ) -> impl IntoElement {
-    if scope == Scope::Following {
-        app.ensure_follow_meta(cx);
-    }
-
     let narrow = window.viewport_size().width < theme::unit(768.0);
     let filter = filter(app, scope);
     let grid = grid(app, scope);
@@ -129,59 +128,84 @@ fn render(
     }
 
     let cell = grid::cell(window);
-    let scroll = app.pane(match scope {
+    let scroll = app.scroll(match scope {
         Scope::Library => "shelf",
         Scope::Following => "following",
     });
+    let gap = grid::gap(window);
     let columns = if grid { 3 } else { 1 };
     let row_height = if grid {
-        cell + grid::gap(window) + 44.0
+        cover::tile_height(cell) + gap
     } else {
         52.0
     };
+    let count = items.len();
+    let total_rows = count.div_ceil(columns);
+    let entity = cx.entity();
 
-    let shown = grid::visible(
-        &scroll,
-        window.viewport_size().height,
-        row_height,
-        columns,
-        items.len(),
-    );
+    let rows = uniform_list("shelf-scroll", total_rows, move |range, _window, cx| {
+        range
+            .filter_map(|row| {
+                let start = row * columns;
+                let end = (start + columns).min(count);
+                if start >= end {
+                    return None;
+                }
 
-    let rows: Vec<AnyElement> = match (&items, grid) {
-        (Items::Library(items), true) => items
-            .iter()
-            .enumerate()
-            .map(|(ix, item)| {
-                card::tile(app, cx, item, cell, true, shown.contains(&ix)).into_any_element()
+                Some(entity.update(cx, |app, cx| {
+                    let mut cards = Vec::with_capacity(end - start);
+                    for index in start..end {
+                        let card = match (&items, grid) {
+                            (Items::Library(items), true) => items.get(index).map(|item| {
+                                card::tile(app, cx, item, cell, true, true).into_any_element()
+                            }),
+                            (Items::Library(items), false) => items.get(index).map(|item| {
+                                row::show(app, cx, item, true, true).into_any_element()
+                            }),
+                            (Items::Following(items), true) => items.get(index).map(|item| {
+                                follow_tile(app, cx, item, cell, true).into_any_element()
+                            }),
+                            (Items::Following(items), false) => items
+                                .get(index)
+                                .map(|item| follow_row(app, cx, item, true).into_any_element()),
+                        };
+                        if let Some(card) = card {
+                            cards.push(card);
+                        }
+                    }
+
+                    if grid {
+                        div()
+                            .flex()
+                            .items_start()
+                            .gap(theme::unit(gap))
+                            .h(theme::unit(row_height))
+                            .children(cards)
+                            .into_any_element()
+                    } else {
+                        cards
+                            .into_iter()
+                            .next()
+                            .unwrap_or_else(|| div().h(theme::unit(row_height)).into_any_element())
+                    }
+                }))
             })
-            .collect(),
-        (Items::Library(items), false) => items
-            .iter()
-            .enumerate()
-            .map(|(ix, item)| {
-                row::show(app, cx, item, true, shown.contains(&ix)).into_any_element()
-            })
-            .collect(),
-        (Items::Following(items), true) => items
-            .iter()
-            .enumerate()
-            .map(|(ix, item)| {
-                follow_tile(app, cx, item, cell, shown.contains(&ix)).into_any_element()
-            })
-            .collect(),
-        (Items::Following(items), false) => items
-            .iter()
-            .enumerate()
-            .map(|(ix, item)| follow_row(app, cx, item, shown.contains(&ix)).into_any_element())
-            .collect(),
-    };
+            .collect()
+    })
+    .track_scroll(&scroll)
+    .pl(theme::unit(grid::LEFT))
+    .pr(theme::unit(grid::GUTTER))
+    .pb(theme::unit(12.0))
+    .h_full();
 
-    let content = if grid {
-        grid::show("shelf-scroll", &scroll, window, rows)
-    } else {
-        grid::list("shelf-scroll", &scroll, rows)
-    };
-
-    panel.child(content)
+    panel.child(
+        div()
+            .debug_selector(|| "shelf-rows".to_owned())
+            .relative()
+            .flex_1()
+            .h_full()
+            .min_h(theme::unit(0.0))
+            .child(rows)
+            .child(scroll::bar(&scroll)),
+    )
 }

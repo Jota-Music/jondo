@@ -109,6 +109,23 @@ impl Jondo {
         });
     }
 
+    /// Loads the missing album covers for every group the artist page shows.
+    /// Called when the artist arrives, not while the page renders.
+    pub fn ensure_artist_meta(&mut self, id: &str, cx: &mut gpui::Context<Self>) {
+        let groups = {
+            let catalog = self.catalog.read(cx);
+            let Some(artist) = catalog.artists.value(id) else {
+                return;
+            };
+
+            crate::shared::music::domain::groups(&artist.albums)
+        };
+
+        for group in groups {
+            self.ensure_discography(id, &group, cx);
+        }
+    }
+
     pub fn ensure_channel(&mut self, id: &str, cx: &mut gpui::Context<Self>) {
         if !self
             .catalog

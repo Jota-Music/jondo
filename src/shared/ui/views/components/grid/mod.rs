@@ -7,8 +7,9 @@ use gpui::{
 use crate::shared::ui::views::components::{hover, scroll};
 use crate::shared::ui::views::design::{icons, theme};
 
-const LEFT: f32 = 4.0;
-const GUTTER: f32 = 15.0;
+/// The inner left inset and the scrollbar gutter every framed pane keeps.
+pub const LEFT: f32 = 4.0;
+pub const GUTTER: f32 = 15.0;
 const BORDER: f32 = 2.0;
 
 pub fn narrow(window: &Window) -> bool {
@@ -17,52 +18,6 @@ pub fn narrow(window: &Window) -> bool {
 
 pub fn gap(window: &Window) -> f32 {
     if narrow(window) { 2.0 } else { 16.0 }
-}
-
-/// The item range a grid or list has to build covers for. Rows above and below
-/// the viewport keep their space but do not ask for artwork: a page that
-/// requests every row floods the cover cache and evicts the images already on
-/// screen, which is what leaves rows shimmering forever.
-pub fn visible(
-    scroll: &ScrollHandle,
-    viewport: gpui::Pixels,
-    row_height: f32,
-    columns: usize,
-    count: usize,
-) -> std::ops::Range<usize> {
-    let height = {
-        let bounds = scroll.bounds().size.height;
-        if bounds > theme::unit(0.0) {
-            bounds
-        } else {
-            viewport
-        }
-    };
-
-    range(
-        (-scroll.offset().y).as_f32().max(0.0),
-        height.as_f32(),
-        row_height,
-        columns,
-        count,
-    )
-}
-
-fn range(
-    offset: f32,
-    height: f32,
-    row_height: f32,
-    columns: usize,
-    count: usize,
-) -> std::ops::Range<usize> {
-    let columns = columns.max(1);
-    let rows = count.div_ceil(columns);
-    let row = row_height.max(1.0);
-    let first = (offset / row).floor().max(0.0) as usize;
-    let last = ((offset + height.max(0.0)) / row).ceil() as usize;
-    let first = first.saturating_sub(2);
-    let last = (last + 2).min(rows);
-    (first * columns).min(count)..(last * columns).min(count)
 }
 
 /// The square a card occupies in the 672px column, once the panel border and

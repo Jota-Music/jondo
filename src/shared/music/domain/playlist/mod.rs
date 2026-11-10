@@ -35,6 +35,11 @@ impl Playlist {
     pub fn liked(&self) -> bool {
         self.id.starts_with("spotify:user:") && self.id.ends_with(":collection")
     }
+
+    /// Song radio is a synthetic context, not a playlist that can be followed.
+    pub fn radio(&self) -> bool {
+        self.id.starts_with("spotify:radio:")
+    }
 }
 
 #[cfg(test)]

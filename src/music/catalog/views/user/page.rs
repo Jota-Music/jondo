@@ -180,7 +180,7 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> An
             cx,
             format!("user-playlists:{username}"),
             "user-playlists",
-            &playlists,
+            playlists,
             grid,
         ))
     };

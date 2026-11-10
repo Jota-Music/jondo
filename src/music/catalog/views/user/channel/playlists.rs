@@ -1,4 +1,5 @@
 use gpui::{AnyElement, Context, Window};
+use std::rc::Rc;
 
 use crate::music::library::views::playlist;
 use crate::shared::i18n::t;
@@ -25,7 +26,7 @@ pub(super) fn playlists(
         cx,
         format!("channel-playlists:{id}"),
         "channel-playlists",
-        items,
+        Rc::new(items.to_vec()),
         grid,
     ))
 }

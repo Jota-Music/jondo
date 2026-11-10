@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use gpui::{Modifiers, MouseButton, TestAppContext, VisualTestContext};
 use gpui_pre as gpui;
-use jondo::shell::app::Jondo;
+use jondo::shell::app::{Jondo, Route};
 
 /// A home under the temporary folder, pinned once for the whole binary.
 fn home() -> PathBuf {
@@ -55,6 +55,26 @@ fn the_shell_paints_on_a_fresh_home(cx: &mut TestAppContext) {
 
     assert!(bounds(cx, "search-toggle").size.width > gpui::px(0.0));
     assert!(bounds(cx, "filter-all").size.height > gpui::px(0.0));
+}
+
+#[gpui::test]
+fn the_player_bar_shows_without_a_song(cx: &mut TestAppContext) {
+    home();
+    let store = jondo::shared::storage::Store::load();
+
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        jondo::shared::ui::views::design::theme::install(cx);
+    });
+
+    let (_app, cx) = cx.add_window_view(|window, cx| Jondo::boot(store, window, cx));
+    cx.run_until_parked();
+    frame(cx);
+
+    assert!(
+        cx.debug_bounds("bar-play").is_some(),
+        "the player bar should be painted even with an empty queue"
+    );
 }
 
 #[gpui::test]
@@ -149,5 +169,42 @@ fn opening_the_queue_queues_its_scroll(cx: &mut TestAppContext) {
     assert!(
         scroll.0.borrow().deferred_scroll_to_item.is_some(),
         "opening the queue must queue its scroll without waiting for the clock"
+    );
+}
+
+#[gpui::test]
+fn a_long_local_shelf_virtualizes_its_rows(cx: &mut TestAppContext) {
+    home();
+    let store = jondo::shared::storage::Store::load();
+
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        jondo::shared::ui::views::design::theme::install(cx);
+    });
+
+    let (app, cx) = cx.add_window_view(|window, cx| Jondo::boot(store, window, cx));
+    cx.run_until_parked();
+    frame(cx);
+
+    app.update(cx, |app, cx| {
+        for index in 0..30 {
+            app.create_playlist(&format!("Mix {index}"), cx);
+        }
+
+        app.open(Route::Home, cx);
+        cx.notify();
+    });
+    cx.run_until_parked();
+    frame(cx);
+
+    assert!(
+        cx.debug_bounds("shelf-rows").is_some(),
+        "the shelf must paint its virtualized rows"
+    );
+
+    let scroll = app.update(cx, |app, _| app.scroll("shelf"));
+    assert!(
+        scroll.0.borrow().base_handle.max_offset().y > gpui::px(0.0),
+        "thirty playlists must overflow the shelf viewport"
     );
 }

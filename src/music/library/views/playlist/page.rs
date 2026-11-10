@@ -1,13 +1,16 @@
-use gpui::{AnyElement, Context, IntoElement, ParentElement, Styled, Window, div};
+use std::rc::Rc;
+
+use gpui::{AnyElement, Context, IntoElement, ParentElement, Styled, Window, div, uniform_list};
 use gpui_kit::component::input::InputEvent;
 
 use crate::music::track::views::{actions, list, row as track_row};
 use crate::shared::i18n::{self, t};
 use crate::shared::music::domain::{Playlist, Source};
+use crate::shared::music::views::cover;
 use crate::shared::ui::views::components::{
     grid,
     hint::{self, Hint},
-    loading,
+    loading, scroll,
 };
 
 use crate::shared::ui::views::design::icons;
@@ -71,44 +74,77 @@ pub fn results(
     cx: &mut Context<Jondo>,
     key: impl Into<String>,
     id: &'static str,
-    playlists: &[Playlist],
+    playlists: Rc<Vec<Playlist>>,
     grid: bool,
 ) -> AnyElement {
-    let scroll = app.pane(key);
-    if grid {
-        let cell = grid::cell(window);
-        let shown = grid::visible(
-            &scroll,
-            window.viewport_size().height,
-            cell + grid::gap(window) + 44.0,
-            3,
-            playlists.len(),
-        );
-        let tiles: Vec<AnyElement> = playlists
-            .iter()
-            .enumerate()
-            .map(|(ix, playlist)| {
-                card::tile(app, cx, playlist, cell, false, shown.contains(&ix)).into_any_element()
-            })
-            .collect();
-        return grid::show(id, &scroll, window, tiles);
-    }
+    let scroll = app.scroll(key);
+    let cell = grid::cell(window);
+    let gap = grid::gap(window);
+    let columns = if grid { 3 } else { 1 };
+    let row_height = if grid {
+        cover::tile_height(cell) + gap
+    } else {
+        52.0
+    };
+    let count = playlists.len();
+    let total_rows = count.div_ceil(columns);
+    let entity = cx.entity();
 
-    let shown = grid::visible(
-        &scroll,
-        window.viewport_size().height,
-        52.0,
-        1,
-        playlists.len(),
-    );
-    let rows: Vec<AnyElement> = playlists
-        .iter()
-        .enumerate()
-        .map(|(ix, playlist)| {
-            row::show(app, cx, playlist, false, shown.contains(&ix)).into_any_element()
-        })
-        .collect();
-    grid::list(id, &scroll, rows)
+    let rows = uniform_list(id, total_rows, move |range, _window, cx| {
+        range
+            .filter_map(|slot| {
+                let start = slot * columns;
+                let end = (start + columns).min(count);
+                if start >= end {
+                    return None;
+                }
+
+                Some(entity.update(cx, |app, cx| {
+                    let mut cards = Vec::with_capacity(end - start);
+                    for index in start..end {
+                        let Some(playlist) = playlists.get(index) else {
+                            continue;
+                        };
+
+                        cards.push(if grid {
+                            card::tile(app, cx, playlist, cell, false, true).into_any_element()
+                        } else {
+                            row::show(app, cx, playlist, false, true).into_any_element()
+                        });
+                    }
+
+                    if grid {
+                        div()
+                            .flex()
+                            .items_start()
+                            .gap(theme::unit(gap))
+                            .h(theme::unit(row_height))
+                            .children(cards)
+                            .into_any_element()
+                    } else {
+                        cards
+                            .into_iter()
+                            .next()
+                            .unwrap_or_else(|| div().h(theme::unit(row_height)).into_any_element())
+                    }
+                }))
+            })
+            .collect()
+    })
+    .track_scroll(&scroll)
+    .pl(theme::unit(grid::LEFT))
+    .pr(theme::unit(grid::GUTTER))
+    .pb(theme::unit(12.0))
+    .h_full();
+
+    div()
+        .relative()
+        .flex_1()
+        .h_full()
+        .min_h(theme::unit(0.0))
+        .child(rows)
+        .child(scroll::bar(&scroll))
+        .into_any_element()
 }
 
 pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> AnyElement {
@@ -124,16 +160,17 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> An
         return missing(cx, &id);
     };
 
-    let empty = app.songs(&playlist.id, cx).is_empty();
+    let table = app.rows(&playlist.id, cx);
+    let empty = table.full.is_empty();
     if playlist.loading && empty {
         return skeleton(app, window, cx);
     }
 
-    let here = app.player.read(cx).current().is_some_and(|song| {
-        app.songs(&playlist.id, cx)
-            .iter()
-            .any(|item| item.id == song.id)
-    });
+    let here = app
+        .player
+        .read(cx)
+        .current()
+        .is_some_and(|song| table.full.iter().any(|item| item.id == song.id));
     let count = playlist.track_count;
     let tracks = i18n::count(count as usize, "1 track", "{count} tracks");
 
@@ -151,7 +188,8 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> An
 
             Some((owner, route))
         });
-    let save = (!playlist.is_local() && !playlist.liked()).then(|| playlist.clone());
+    let save =
+        (!playlist.is_local() && !playlist.liked() && !playlist.radio()).then(|| playlist.clone());
     let menu_id = playlist.id.clone();
     let play_id = playlist.id.clone();
     let header = page::show(
@@ -171,7 +209,7 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> An
                 playing: app.player.read(cx).playing && here,
                 loading: app.player.read(cx).loading && here,
                 on_click: Box::new(cx.listener(move |app, _: &gpui::ClickEvent, _, cx| {
-                    app.play_playlist(&play_id, cx);
+                    app.toggle_playlist(&play_id, cx);
                     cx.notify();
                 })),
             }),
@@ -183,8 +221,6 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> An
             })),
         },
     );
-
-    let table = app.rows(&playlist.id, cx);
 
     let spinner = playlist.loading && table.full.is_empty();
     let body = if spinner {
@@ -236,13 +272,21 @@ fn skeleton(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> An
 }
 
 fn missing(cx: &mut Context<Jondo>, id: &str) -> AnyElement {
-    let _ = id;
+    let radio = id.starts_with("spotify:radio:");
     hint::hint(
         Hint {
             icon: icons::CIRCLE_ALERT,
             tint: theme::AMBER,
-            title: t("Playlist not found"),
-            body: t("This playlist is no longer in your library."),
+            title: if radio {
+                t("Radio unavailable")
+            } else {
+                t("Playlist not found")
+            },
+            body: if radio {
+                t("Spotify could not build this radio. Try again.")
+            } else {
+                t("This playlist is no longer in your library.")
+            },
             steps: &[],
         },
         Some(hint::action(
@@ -271,3 +315,7 @@ pub fn wire(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) {
         },
     ));
 }
+
+#[cfg(test)]
+#[path = "page.test.rs"]
+mod tests;

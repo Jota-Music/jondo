@@ -11,6 +11,16 @@ use crate::shared::music::domain::Source;
 use crate::shared::ui::views::design::icons::{self, Icon};
 use crate::shared::ui::views::design::theme;
 
+/// The two 1.2 lines under a cover, their gap and the 8/6 padding around them,
+/// in design pixels.
+pub const LABEL: f32 = 8.0 + 14.0 * 1.2 + 2.0 + 12.0 * 1.2 + 6.0;
+
+/// The tile a cover with a two-line label occupies: the artwork (with its 6px
+/// top inset) plus that strip. Pinning it keeps uniform list rows aligned.
+pub fn tile_height(width: f32) -> f32 {
+    width - 6.0 + LABEL
+}
+
 /// Artwork for a remote URL while it is still on its way. The image cache
 /// only answers once the bytes are decoded, so a URL that is not ready yet
 /// owes the reader a shimmer rather than a hollow box.
@@ -43,8 +53,6 @@ fn photo(image: Arc<RenderImage>, width: f32, height: f32, radius: f32) -> AnyEl
         .h(theme::unit(height))
         .flex_none()
         .rounded(theme::unit(radius))
-        .overflow_hidden()
-        .bg(theme::ZINC_900)
         .child(
             img(image.clone())
                 .w(theme::unit(width))
@@ -66,7 +74,6 @@ fn missing(width: f32, height: f32, radius: f32) -> AnyElement {
         .h(theme::unit(height))
         .flex_none()
         .rounded(theme::unit(radius))
-        .overflow_hidden()
         .bg(theme::ZINC_900)
         .child(
             div()

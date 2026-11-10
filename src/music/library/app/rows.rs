@@ -63,17 +63,10 @@ impl Jondo {
 
     pub fn view(&self, id: &str, cx: &gpui::App) -> Option<Playlist> {
         if let Some(local) = self.store.playlist(id) {
-            let covers = local
-                .songs
-                .iter()
-                .filter_map(|song| song.cover.clone())
-                .take(4)
-                .collect();
             return Some(Playlist {
                 id: local.id.clone(),
                 name: local.name.clone(),
-                cover: local.songs.first().and_then(|song| song.cover.clone()),
-                covers,
+                covers: local.covers(),
                 source: Source::Local,
                 track_count: local.songs.len() as u32,
                 ..Default::default()
@@ -162,9 +155,9 @@ impl Jondo {
         self.ui.table.clone()
     }
 
-    /// The row count the table key needs, without cloning the songs when the
-    /// table is already built.
-    fn song_count(&self, id: &str, cx: &gpui::App) -> usize {
+    /// The row count the table key and the drag geometry need, without cloning
+    /// the songs they would otherwise have to walk.
+    pub(crate) fn song_count(&self, id: &str, cx: &gpui::App) -> usize {
         if let Some(local) = self.store.playlist(id) {
             return local.songs.len();
         }
@@ -222,16 +215,10 @@ impl Jondo {
         );
 
         items.extend(self.store.playlists.iter().map(|local| {
-            let covers: Vec<String> = local
-                .songs
-                .iter()
-                .filter_map(|song| song.cover.clone())
-                .take(4)
-                .collect();
+            let covers = local.covers();
             Playlist {
                 id: local.id.clone(),
                 name: local.name.clone(),
-                cover: covers.first().cloned(),
                 covers,
                 source: Source::Local,
                 track_count: local.songs.len() as u32,

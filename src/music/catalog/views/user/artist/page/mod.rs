@@ -1,16 +1,20 @@
+use std::rc::Rc;
 use std::time::Instant;
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     AnyElement, Context, Div, ElementId, InteractiveElement, IntoElement, ParentElement,
-    StatefulInteractiveElement, Styled, Window, div,
+    StatefulInteractiveElement, Styled, Window, div, uniform_list,
 };
 
 use crate::music::track::views::{actions, list, row};
 use crate::shared::i18n::{self, t};
 use crate::shared::music::domain::{Album, Follow, FollowKind};
 use crate::shared::music::views::cover;
-use crate::shared::ui::views::components::{grid, hint, hover, loading, reveal, text};
+use crate::shared::ui::views::components::paint::Scope;
+use crate::shared::ui::views::components::{
+    grid, hint, hold, hover, loading, reveal, scroll, text,
+};
 use crate::shared::ui::views::design::icons;
 use crate::shared::ui::views::design::theme;
 use crate::shell::app::{Jondo, Route};
@@ -18,8 +22,6 @@ use crate::shell::views::menu::{Command, Item, Menu};
 use crate::shell::views::page::{self, Header, Play};
 
 use super::tabs::tab_button;
-
-const GROUPS: [&str; 4] = ["album", "single", "compilation", "appears_on"];
 
 fn group_of(album: &Album) -> &str {
     if album.group.trim().is_empty() {
@@ -30,15 +32,7 @@ fn group_of(album: &Album) -> &str {
 }
 
 fn groups_of(albums: &[Album]) -> Vec<String> {
-    let mut groups: Vec<String> = GROUPS.iter().map(|key| (*key).to_owned()).collect();
-    for album in albums {
-        let key = group_of(album).to_lowercase();
-        if !groups.contains(&key) {
-            groups.push(key);
-        }
-    }
-
-    groups
+    crate::shared::music::domain::groups(albums)
 }
 
 fn count_of(albums: &[Album], group: &str) -> usize {
@@ -211,10 +205,6 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> An
     let followers = artist.followers;
     let albums = artist.albums.clone();
     let groups = groups_of(&albums);
-    for group in &groups {
-        app.ensure_discography(&id, group, cx);
-    }
-
     let table = app.artist_rows(&id, cx);
     let tracks = table.full.clone();
     let subtitle =
@@ -262,7 +252,7 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> An
                     let tracks = tracks.clone();
                     move |app, _: &gpui::ClickEvent, _, cx| {
                         if !tracks.is_empty() {
-                            app.play_list((*tracks).clone(), 0, cx);
+                            app.toggle_list(&tracks, cx);
                             cx.notify();
                         }
                     }
@@ -290,8 +280,9 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> An
         },
     );
 
-    let tabs = tabs(app, cx, window, &id, &albums, &groups, &selected);
-    let content = content(app, cx, window, &id, &albums, &selected);
+    let albums = Rc::new(albums);
+    let tabs = tabs(app, cx, window, &id, albums.as_slice(), &groups, &selected);
+    let content = content(app, cx, window, &id, albums, &selected);
 
     div()
         .size_full()
@@ -309,7 +300,7 @@ fn content(
     cx: &mut Context<Jondo>,
     window: &Window,
     id: &str,
-    albums: &[Album],
+    albums: Rc<Vec<Album>>,
     selected: &str,
 ) -> AnyElement {
     if selected == "tracks" {
@@ -333,41 +324,86 @@ fn content(
         return page::panel(loading::spinner());
     }
 
-    let filtered: Vec<&Album> = albums
-        .iter()
-        .filter(|album| group_of(album).eq_ignore_ascii_case(selected))
-        .collect();
+    let filtered: Rc<Vec<usize>> = Rc::new(
+        albums
+            .iter()
+            .enumerate()
+            .filter(|(_, album)| group_of(album).eq_ignore_ascii_case(selected))
+            .map(|(index, _)| index)
+            .collect(),
+    );
     let cell = grid::cell(window);
     let grid = app.ui.artist_grid;
-    let scroll = app.pane(format!("artist-albums:{id}"));
-    let (row_height, columns) = if grid {
-        (cell + grid::gap(window) + 44.0, 3)
+    let scroll = app.scroll(format!("artist-albums:{id}"));
+    let gap = grid::gap(window);
+    let columns = if grid { 3 } else { 1 };
+    let row_height = if grid {
+        cover::tile_height(cell) + gap
     } else {
-        (52.0, 1)
+        52.0
     };
+    let count = filtered.len();
+    let total_rows = count.div_ceil(columns);
+    let entity = cx.entity();
 
-    let shown = grid::visible(
-        &scroll,
-        window.viewport_size().height,
-        row_height,
-        columns,
-        filtered.len(),
-    );
-    let body = if grid {
-        let tiles: Vec<AnyElement> = filtered
-            .iter()
-            .enumerate()
-            .map(|(position, album)| tile(app, cx, album, cell, shown.contains(&position)))
-            .collect();
-        grid::show("artist-albums", &scroll, window, tiles)
-    } else {
-        let rows: Vec<AnyElement> = filtered
-            .iter()
-            .enumerate()
-            .map(|(position, album)| list_row(app, cx, album, shown.contains(&position)))
-            .collect();
-        grid::list("artist-albums-rows", &scroll, rows)
-    };
+    let rows = uniform_list("artist-albums", total_rows, move |range, _window, cx| {
+        range
+            .filter_map(|slot| {
+                let start = slot * columns;
+                let end = (start + columns).min(count);
+                if start >= end {
+                    return None;
+                }
+
+                Some(entity.update(cx, |app, cx| {
+                    let mut cards = Vec::with_capacity(end - start);
+                    for position in start..end {
+                        let Some(index) = filtered.get(position) else {
+                            continue;
+                        };
+                        let Some(album) = albums.get(*index) else {
+                            continue;
+                        };
+
+                        cards.push(if grid {
+                            tile(app, cx, album, cell, true)
+                        } else {
+                            list_row(app, cx, album, true)
+                        });
+                    }
+
+                    if grid {
+                        div()
+                            .flex()
+                            .items_start()
+                            .gap(theme::unit(gap))
+                            .h(theme::unit(row_height))
+                            .children(cards)
+                            .into_any_element()
+                    } else {
+                        cards
+                            .into_iter()
+                            .next()
+                            .unwrap_or_else(|| div().h(theme::unit(row_height)).into_any_element())
+                    }
+                }))
+            })
+            .collect()
+    })
+    .track_scroll(&scroll)
+    .pl(theme::unit(grid::LEFT))
+    .pr(theme::unit(grid::GUTTER))
+    .pb(theme::unit(12.0))
+    .h_full();
+
+    let body = div()
+        .relative()
+        .flex_1()
+        .h_full()
+        .min_h(theme::unit(0.0))
+        .child(rows)
+        .child(scroll::bar(&scroll))
+        .into_any_element();
 
     let toggle = div()
         .flex()
@@ -408,8 +444,8 @@ fn open_menu(
         return;
     }
 
-    app.ui.menu = Some(Menu::context(position, None, items, 0.0));
-    cx.notify();
+    app.menu = Some(Menu::context(position, None, items, 0.0));
+    app.notify_shell(cx);
 }
 
 fn tile(
@@ -435,6 +471,8 @@ fn tile(
     let play_id = album.id.clone();
     let group = format!("artist-album-{}", album.id);
     let menu = album.clone();
+    let hold_album = album.clone();
+    let entity = cx.entity();
     let play = div()
         .absolute()
         .right(theme::unit(10.0))
@@ -459,6 +497,7 @@ fn tile(
         .id(format!("artist-album-{}", album.id))
         .group(group)
         .w(theme::unit(cell))
+        .h(theme::unit(cover::tile_height(cell)))
         .flex_none()
         .flex()
         .flex_col()
@@ -472,6 +511,11 @@ fn tile(
         .on_click(cx.listener(move |app, _: &gpui::ClickEvent, _, cx| {
             app.open(Route::Album(album_id.clone()), cx);
             cx.notify();
+        }))
+        .child(hold::hold(move |position, _, cx| {
+            entity.update(cx, |app, cx| {
+                open_menu(app, cx, position, &hold_album);
+            });
         }))
         .child(
             div()
@@ -524,6 +568,8 @@ fn list_row(app: &mut Jondo, cx: &mut Context<Jondo>, album: &Album, shown: bool
     let album_id = album.id.clone();
     let play_id = album.id.clone();
     let menu = album.clone();
+    let hold_album = album.clone();
+    let entity = cx.entity();
     let play = reveal::show(
         &group,
         reveal::button(
@@ -554,9 +600,15 @@ fn list_row(app: &mut Jondo, cx: &mut Context<Jondo>, album: &Album, shown: bool
         })
         .on_hover(cx.listener({
             let id = id.clone();
-            move |_, on: &bool, _, cx| {
-                hover::set(&id, *on, Instant::now());
-                cx.refresh_windows();
+            move |app, on: &bool, window, cx| {
+                hover::set_in(
+                    Scope::Page,
+                    &id,
+                    *on,
+                    Instant::now(),
+                    window.last_input_was_touch(),
+                );
+                app.paint_page(cx);
             }
         }))
         .on_mouse_down(
@@ -568,6 +620,11 @@ fn list_row(app: &mut Jondo, cx: &mut Context<Jondo>, album: &Album, shown: bool
         .on_click(cx.listener(move |app, _: &gpui::ClickEvent, _, cx| {
             app.open(Route::Album(album_id.clone()), cx);
             cx.notify();
+        }))
+        .child(hold::hold(move |position, _, cx| {
+            entity.update(cx, |app, cx| {
+                open_menu(app, cx, position, &hold_album);
+            });
         }))
         .child(div().w(theme::unit(8.0)))
         .child(art)

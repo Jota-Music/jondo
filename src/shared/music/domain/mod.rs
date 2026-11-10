@@ -10,7 +10,7 @@ mod search;
 mod song;
 mod user;
 
-pub use artist::{Album, ArtistRef, ArtistSummary, ArtistView};
+pub use artist::{ALBUM_GROUPS, Album, ArtistRef, ArtistSummary, ArtistView, groups};
 pub use channel::{Channel, ChannelView};
 pub use follow::{Follow, FollowKind};
 pub use media::{Stream, Video};
