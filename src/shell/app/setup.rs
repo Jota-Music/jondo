@@ -103,7 +103,7 @@ impl Jondo {
             player,
             preview: crate::music::track::app::Preview::default(),
             jobs: Jobs::new(),
-            youtube: Arc::new(Youtube::new()),
+            youtube: Arc::new(Youtube::persisted()),
             http: reqwest::Client::builder()
                 .timeout(Duration::from_secs(20))
                 .build()

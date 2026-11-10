@@ -24,19 +24,26 @@ pub fn init() -> Result<(), String> {
     })
 }
 
-pub fn set_metadata(title: &str, artist: &str, duration_ms: u64) -> Result<(), String> {
+pub fn set_metadata(
+    title: &str,
+    artist: &str,
+    album: &str,
+    duration_ms: u64,
+) -> Result<(), String> {
     jni_helpers::with_env(|env| {
         let cls = jni_helpers::find_app_class(env, HELPER_CLASS)?;
         let j_title = env.new_string(title).e()?;
         let j_artist = env.new_string(artist).e()?;
+        let j_album = env.new_string(album).e()?;
 
         env.call_static_method(
             &cls,
             jni::jni_str!("setMetadata"),
-            jni::jni_sig!("(Ljava/lang/String;Ljava/lang/String;J)V"),
+            jni::jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J)V"),
             &[
                 JValue::Object(&j_title),
                 JValue::Object(&j_artist),
+                JValue::Object(&j_album),
                 JValue::Long(duration_ms as i64),
             ],
         )

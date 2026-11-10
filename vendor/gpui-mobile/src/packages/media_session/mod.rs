@@ -70,14 +70,19 @@ pub fn init() -> Result<(), String> {
 }
 
 /// Update the media metadata shown in the system notification / lock screen.
-pub fn set_metadata(title: &str, artist: &str, duration_ms: u64) -> Result<(), String> {
+pub fn set_metadata(
+    title: &str,
+    artist: &str,
+    album: &str,
+    duration_ms: u64,
+) -> Result<(), String> {
     #[cfg(target_os = "android")]
     {
-        android::set_metadata(title, artist, duration_ms)
+        android::set_metadata(title, artist, album, duration_ms)
     }
     #[cfg(not(target_os = "android"))]
     {
-        let _ = (title, artist, duration_ms);
+        let _ = (title, artist, album, duration_ms);
         Ok(())
     }
 }

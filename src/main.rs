@@ -54,6 +54,7 @@ fn main() {
         };
 
         let (_, view) = gpui_kit::open_window(options, cx, |window, cx| {
+            jondo::shell::app::platform::media::install(window);
             cx.new(|cx| Jondo::boot(store, window, cx))
         })
         .expect("window");

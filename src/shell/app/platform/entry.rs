@@ -7,11 +7,7 @@ use crate::shell::app::Jondo;
 /// event loop, and the closure runs when the native surface exists.
 #[unsafe(no_mangle)]
 fn android_main(app: android_activity::AndroidApp) {
-    android_logger::init_once(
-        android_logger::Config::default()
-            .with_max_level(log::LevelFilter::Info)
-            .with_tag("jondo"),
-    );
+    crate::shared::logs::install();
     gpui_mobile::android::jni::install_panic_hook();
     crate::shared::storage::use_home_from_env();
 
