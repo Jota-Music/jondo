@@ -336,7 +336,11 @@ fn leading(
             .cursor_pointer()
             .on_click(cx.listener(|app, _: &gpui::ClickEvent, window, cx| {
                 if window.viewport_size().width < theme::unit(768.0) {
-                    app.open_player();
+                    if app.ui.player_open {
+                        app.close_player();
+                    } else {
+                        app.open_player();
+                    }
                 } else {
                     app.ui.compact = false;
                     app.persist(cx);
