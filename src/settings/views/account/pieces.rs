@@ -4,11 +4,11 @@ use gpui::{
 };
 
 use crate::shared::i18n::t;
-use crate::shared::ui::views::components::text;
+use crate::shared::ui::views::components::{button, text};
 use crate::shared::ui::views::design::icons::{self};
 use crate::shared::ui::views::design::theme;
-use crate::shell::app::Jondo;
-use crate::shell::views::menu::{Command, Item, Menu};
+use crate::shell::app::{Jondo, SpotifyState};
+use crate::shell::views::menu::{Command, Item, Menu, toggle};
 
 use super::super::chrome::{card, danger_button, filled_button};
 
@@ -60,9 +60,10 @@ pub(super) fn browser_import(
                             )
                         })
                         .collect();
-                    app.menu = Some(
-                        Menu::choice(event.position(), t("Browser"), items)
-                            .origin("settings-browser"),
+                    toggle(
+                        app,
+                        "settings-browser",
+                        Menu::choice(event.position(), t("Browser"), items),
                     );
                     app.notify_shell(cx);
                 }))

@@ -12,7 +12,7 @@ use crate::shared::ui::views::components::{button, hold, text};
 use crate::shared::ui::views::design::icons;
 use crate::shared::ui::views::design::theme;
 use crate::shell::app::{Drag, Jondo};
-use crate::shell::views::menu::{Command, Item, Menu};
+use crate::shell::views::menu::{Command, Item, Menu, toggle};
 
 use super::controls::{seek_bar, volume_control};
 
@@ -277,7 +277,11 @@ fn controls(
             if narrow { 44.0 } else { 32.0 },
             true,
             cx.listener(move |app, event: &gpui::ClickEvent, _, cx| {
-                app.menu = Some(Menu::context(event.position(), None, menu.clone(), 76.0));
+                toggle(
+                    app,
+                    "bar-more",
+                    Menu::context(event.position(), None, menu.clone(), 76.0),
+                );
                 app.notify_shell(cx);
             }),
         ));

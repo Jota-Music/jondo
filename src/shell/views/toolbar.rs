@@ -10,7 +10,7 @@ use crate::shared::ui::views::components::{
 use crate::shared::ui::views::design::icons;
 use crate::shared::ui::views::design::theme;
 use crate::shell::app::Jondo;
-use crate::shell::views::menu::{Item, Menu};
+use crate::shell::views::menu::{Item, Menu, toggle};
 use crate::shell::views::page::Click;
 
 /// The search, sort and reload row a list page owns.
@@ -49,7 +49,7 @@ pub fn show(
     let open = app
         .menu
         .as_ref()
-        .is_some_and(|menu| menu.origin == Some(origin));
+        .is_some_and(|menu| menu.from(&origin.into()));
     div()
         .flex()
         .items_center()
@@ -93,8 +93,10 @@ pub fn show(
                 border: theme::BORDER,
             },
             cx.listener(move |app, event: &ClickEvent, _, cx| {
-                app.menu = Some(
-                    Menu::choice(event.position(), t("Sort by"), items.clone()).origin(origin),
+                toggle(
+                    app,
+                    origin,
+                    Menu::choice(event.position(), t("Sort by"), items.clone()),
                 );
                 app.notify_shell(cx);
             }),

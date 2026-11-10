@@ -13,7 +13,7 @@ use crate::shared::ui::views::components::paint::{self, Scope};
 use crate::shared::ui::views::design::icons;
 use crate::shared::ui::views::design::theme;
 use crate::shell::app::{Jondo, Route};
-use crate::shell::views::menu::{Command, Item, Menu};
+use crate::shell::views::menu::{Command, Item, Menu, toggle};
 
 #[allow(clippy::too_many_arguments)]
 pub fn track(
@@ -457,7 +457,11 @@ where
                 return;
             }
 
-            app.menu = Some(Menu::context(event.position(), header, items, bottom));
+            toggle(
+                app,
+                id.clone(),
+                Menu::context(event.position(), header, items, bottom),
+            );
             app.notify_shell(cx);
         }))
         .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())

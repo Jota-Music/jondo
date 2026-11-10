@@ -10,7 +10,7 @@ use crate::shared::ui::views::components::{field, switch, text};
 use crate::shared::ui::views::design::icons::{self, Icon};
 use crate::shared::ui::views::design::theme;
 use crate::shell::app::Jondo;
-use crate::shell::views::menu::{Command, Item, Menu};
+use crate::shell::views::menu::{Command, Item, Menu, toggle};
 
 use super::super::chrome::{card, section};
 
@@ -29,7 +29,7 @@ pub(crate) fn backups(app: &mut Jondo, narrow: bool, cx: &mut Context<Jondo>) ->
     let interval_open = app
         .menu
         .as_ref()
-        .is_some_and(|menu| menu.origin == Some("settings-interval"));
+        .is_some_and(|menu| menu.from(&"settings-interval".into()));
     let pass = app.fields.get("session-pass").cloned();
 
     #[cfg(target_os = "android")]
@@ -335,9 +335,10 @@ fn toggles(
                             )
                         })
                         .collect();
-                    app.menu = Some(
-                        Menu::choice(event.position(), t("Interval"), items)
-                            .origin("settings-interval"),
+                    toggle(
+                        app,
+                        "settings-interval",
+                        Menu::choice(event.position(), t("Interval"), items),
                     );
                     app.notify_shell(cx);
                 }))

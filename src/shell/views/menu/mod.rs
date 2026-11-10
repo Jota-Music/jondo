@@ -13,7 +13,7 @@ use std::time::Duration;
 pub use crate::shell::domain::Command;
 pub use catalogs::{channel_order, languages, playlist_order, search_types};
 pub use item::Item;
-pub use view::{Menu, keys, show};
+pub use view::{Menu, keys, show, toggle};
 
 const WIDTH: f32 = 224.0;
 const ROW: f32 = 40.0;

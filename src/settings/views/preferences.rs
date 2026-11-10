@@ -26,7 +26,7 @@ pub(super) fn language(app: &mut Jondo, cx: &mut Context<Jondo>) -> AnyElement {
     let open = app
         .menu
         .as_ref()
-        .is_some_and(|menu| menu.origin == Some("settings-language"));
+        .is_some_and(|menu| menu.from(&"settings-language".into()));
     section(
         Icon::Languages,
         t("Language"),
@@ -53,13 +53,14 @@ pub(super) fn language(app: &mut Jondo, cx: &mut Context<Jondo>) -> AnyElement {
                     border: theme::ZINC_800,
                 },
                 cx.listener(|app, event: &gpui::ClickEvent, _, cx| {
-                    app.menu = Some(
+                    menu::toggle(
+                        app,
+                        "settings-language",
                         Menu::choice(
                             event.position(),
                             t("Language"),
                             menu::languages(i18n::locale()),
-                        )
-                        .origin("settings-language"),
+                        ),
                     );
                     app.notify_shell(cx);
                 }),

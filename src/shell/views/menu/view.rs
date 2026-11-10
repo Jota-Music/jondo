@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
 use gpui::{
-    Context, InteractiveElement, IntoElement, MouseButton, ParentElement, Pixels, Point,
+    Context, ElementId, InteractiveElement, IntoElement, MouseButton, ParentElement, Pixels, Point,
     SharedString, StatefulInteractiveElement, Styled, Window, div,
 };
 
@@ -24,7 +24,7 @@ pub struct Menu {
     pub context: bool,
     pub bottom: f32,
     pub index: Option<usize>,
-    pub origin: Option<&'static str>,
+    pub origin: Option<ElementId>,
     pub opened: Instant,
     pub items: Vec<Item>,
 }
@@ -67,9 +67,14 @@ impl Menu {
 
     /// The id of the control that opened this menu, so it can keep its open
     /// surface while the list is visible.
-    pub fn origin(mut self, origin: &'static str) -> Self {
-        self.origin = Some(origin);
+    pub fn origin(mut self, origin: impl Into<ElementId>) -> Self {
+        self.origin = Some(origin.into());
         self
+    }
+
+    /// Whether `origin` is the control that opened this menu.
+    pub fn from(&self, origin: &ElementId) -> bool {
+        self.origin.as_ref() == Some(origin)
     }
 
     /// Moves the highlighted row the way a native menu does, without wrapping,
@@ -84,6 +89,21 @@ impl Menu {
 
         self.index = Some(next as usize);
     }
+}
+
+/// Opens `menu` under the control `origin`, or closes the open menu when that
+/// same control already opened it, so a trigger works as a toggle. A menu that
+/// is already sliding out opens again instead of ignoring the press.
+pub fn toggle(app: &mut Jondo, origin: impl Into<ElementId>, menu: Menu) -> bool {
+    let origin = origin.into();
+    if app.menu_closing.is_none() && app.menu.as_ref().is_some_and(|open| open.from(&origin)) {
+        app.close_menu();
+        return false;
+    }
+
+    app.menu = Some(menu.origin(origin));
+    app.menu_closing = None;
+    true
 }
 
 /// Keyboard control for the open menu: arrows move the highlight and Enter

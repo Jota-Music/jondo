@@ -25,7 +25,7 @@ pub(crate) fn account(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jon
     let picking = app
         .menu
         .as_ref()
-        .is_some_and(|menu| menu.origin == Some("settings-browser"));
+        .is_some_and(|menu| menu.from(&"settings-browser".into()));
     let error = app.ui.cookies_error.clone();
 
     let browsers = app.settings.read(cx).browsers.clone();

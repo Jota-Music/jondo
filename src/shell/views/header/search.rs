@@ -156,7 +156,7 @@ fn type_select(
     let open = app
         .menu
         .as_ref()
-        .is_some_and(|menu| menu.origin == Some("search-type"));
+        .is_some_and(|menu| menu.from(&"search-type".into()));
     div()
         .id("search-type")
         .debug_selector(|| "search-type".to_owned())
@@ -192,13 +192,14 @@ fn type_select(
             app.ui.search_type.label()
         ))
         .on_click(cx.listener(|app, event: &gpui::ClickEvent, _, cx| {
-            app.menu = Some(
+            menu::toggle(
+                app,
+                "search-type",
                 Menu::choice(
                     event.position(),
                     t("Search type"),
                     menu::search_types(app.ui.search_type),
-                )
-                .origin("search-type"),
+                ),
             );
             app.notify_shell(cx);
         }))
