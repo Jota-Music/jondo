@@ -2,9 +2,13 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use gpui::{App, AppContext as _, Context, Entity, ScrollHandle, UniformListScrollHandle, Window};
+use gpui::{
+    App, AppContext as _, Context, Entity, Focusable as _, ScrollHandle, UniformListScrollHandle,
+    Window,
+};
 use gpui_kit::component::input::{InputState, TextareaState};
 
+use crate::music::player::Repeat;
 use crate::music::player::app::Player;
 use crate::music::rooms::Rooms;
 use crate::shared::cover::Covers;
@@ -40,6 +44,7 @@ impl Jondo {
         // permuted, so it must not be reshuffled on every launch.
         player.queue.replace(store.queue.clone(), store.queue_index);
         player.queue.flag_shuffle(store.shuffle);
+        player.repeat = crate::music::player::parse_repeat(&store.repeat).unwrap_or(Repeat::Off);
         player.load_position(store.position);
         if let Some(song) = player.current() {
             player.duration = song.duration as f64;
@@ -80,6 +85,8 @@ impl Jondo {
         let catalog = cx.new(|_| Catalog::default());
         let player = cx.new(|_| player);
         let settings = cx.new(|_| Settings::default());
+        let seen = cx.entity().downgrade();
+        let screen = cx.new(|cx| crate::shell::views::layouts::Screen::new(seen, cx));
 
         let mut app = Self {
             focus: cx.focus_handle(),
@@ -87,11 +94,12 @@ impl Jondo {
             textareas: HashMap::new(),
             scrolls: HashMap::new(),
             panes: HashMap::new(),
+            pane_offsets: HashMap::new(),
             subscriptions: Vec::new(),
             route: Route::Home,
-            route_key: "route-Home".into(),
             history: History::new(),
             covers: Covers::new(),
+            screen,
             player,
             preview: crate::music::track::app::Preview::default(),
             jobs: Jobs::new(),
@@ -105,6 +113,11 @@ impl Jondo {
             settings,
             probes: HashSet::new(),
             search: SearchState::default(),
+            menu: None,
+            menu_closing: None,
+            selection: Vec::new(),
+            anchor: None,
+            editor: crate::music::track::app::Editor::default(),
             clipboard: Clipboard::default(),
             rooms,
             rooms_ui: Default::default(),
@@ -117,6 +130,7 @@ impl Jondo {
             binary: theme::BINARY,
             accent_cover: None,
             disc_spin: 0.0,
+            disc_shown: false,
             disc_at: Instant::now(),
             pin_applied: false,
             clock: Arc::new(tokio::sync::Notify::new()),
@@ -179,7 +193,7 @@ impl Jondo {
 
         app.resume_spotify(cx);
         #[cfg(not(target_os = "android"))]
-        app.restore_backup();
+        app.start_backup(cx);
 
         app.wire(window, cx);
         crate::music::library::views::playlists::wire(&mut app, window, cx);
@@ -191,6 +205,7 @@ impl Jondo {
         cx.bind_keys(actions::bindings());
         app.focus.focus(window, cx);
 
+        app.install_painter(cx);
         app.watch_events(cx);
         app.watch_clock(window, cx);
         app
@@ -233,6 +248,14 @@ impl Jondo {
             entity.update(cx, |state, cx| {
                 state.set_placeholder(placeholder.to_owned(), window, cx)
             });
+        }
+    }
+
+    /// Focuses the search field from the action that opened or changed it,
+    /// never from `render`.
+    pub fn focus_search(&self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(input) = self.fields.get("search") {
+            input.update(cx, |state, cx| state.focus_handle(cx).focus(window, cx));
         }
     }
 
@@ -402,10 +425,12 @@ impl Jondo {
             |app, state, event: &gpui_kit::component::input::InputEvent, _, cx| match event {
                 gpui_kit::component::input::InputEvent::Change => {
                     app.ui.query = state.read(cx).value().to_string();
-                    cx.notify();
+                    // Only the header clear button reads the draft; the page
+                    // under it does not change until the search is submitted.
+                    app.notify_shell(cx);
                 }
                 gpui_kit::component::input::InputEvent::PressEnter { .. } => {
-                    if app.ui.menu.is_none() {
+                    if app.menu.is_none() {
                         app.submit_search(cx);
                     }
 
@@ -490,7 +515,7 @@ impl Jondo {
                 if idle >= 480 {
                     idle = 0;
                     let _ = this.update(cx, |app, cx| {
-                        if !app.store.trim_memory {
+                        if !app.store.trim_memory || app.covers.pending() {
                             return;
                         }
 

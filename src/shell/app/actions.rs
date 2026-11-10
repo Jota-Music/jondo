@@ -16,20 +16,20 @@ gpui::actions!(
     ]
 );
 
-/// Focus context the application binds its global commands to. Inputs keep
-/// their own context, so a printable key typed in a field never reaches these.
+/// Focus context the application binds its global commands to. Printable keys
+/// also exclude the `Input` context, so typing in a field never reaches them.
 pub(super) const CONTEXT: &str = "Jondo";
 
 pub(super) fn bindings() -> Vec<KeyBinding> {
     vec![
         KeyBinding::new("escape", Dismiss, Some(CONTEXT)),
-        KeyBinding::new("space", TogglePlay, Some(CONTEXT)),
+        KeyBinding::new("space", TogglePlay, Some("Jondo && !Input")),
         KeyBinding::new("shift-right", NextTrack, Some(CONTEXT)),
         KeyBinding::new("shift-left", PreviousTrack, Some(CONTEXT)),
         KeyBinding::new("right", SeekForward, Some(CONTEXT)),
         KeyBinding::new("left", SeekBackward, Some(CONTEXT)),
-        KeyBinding::new("m", ToggleMute, Some(CONTEXT)),
-        KeyBinding::new("q", ToggleQueue, Some(CONTEXT)),
+        KeyBinding::new("m", ToggleMute, Some("Jondo && !Input")),
+        KeyBinding::new("q", ToggleQueue, Some("Jondo && !Input")),
     ]
 }
 
@@ -40,9 +40,18 @@ impl Jondo {
     }
 
     pub(super) fn dismiss_overlays(&mut self, _: &Dismiss, _: &mut Window, cx: &mut Context<Self>) {
-        if self.ui.menu.is_some() {
+        // The Android back gesture arrives as Escape; with nothing left to
+        // dismiss it has to step through the history like the header arrow.
+        let overlay = self.menu.is_some()
+            || self.modal(cx)
+            || self.ui.player_open
+            || self.ui.queue_open
+            || self.ui.search_open;
+        let selected = !self.selection.is_empty();
+
+        if self.menu.is_some() {
             self.close_menu();
-            if !self.ui.selection.is_empty() {
+            if !self.selection.is_empty() {
                 self.clear_selection();
             }
 
@@ -50,7 +59,7 @@ impl Jondo {
             return;
         }
 
-        if self.ui.editor.open {
+        if self.editor.open {
             self.close_editor(cx);
         } else if self.ui.backup_sheet {
             self.ui.backup_closing = Some(std::time::Instant::now());
@@ -71,8 +80,17 @@ impl Jondo {
             self.ui.search_closing = Some(std::time::Instant::now());
         }
 
-        if !self.ui.selection.is_empty() {
+        if !self.selection.is_empty() {
             self.clear_selection();
+        }
+
+        if !overlay && !selected {
+            if self.history.can_back() {
+                self.back(cx);
+            } else {
+                #[cfg(target_os = "android")]
+                crate::shared::platform::android::leave::background();
+            }
         }
 
         cx.notify();
@@ -120,7 +138,7 @@ impl Jondo {
             (player.progress, player.duration)
         };
         self.seek((progress + 5.0).min(duration), cx);
-        cx.notify();
+        self.notify_shell(cx);
     }
 
     pub(super) fn seek_backward(
@@ -135,7 +153,7 @@ impl Jondo {
 
         let progress = self.player.read(cx).progress;
         self.seek((progress - 5.0).max(0.0), cx);
-        cx.notify();
+        self.notify_shell(cx);
     }
 
     pub(super) fn mute_toggle(&mut self, _: &ToggleMute, _: &mut Window, cx: &mut Context<Self>) {
@@ -144,7 +162,7 @@ impl Jondo {
         }
 
         self.toggle_mute(cx);
-        cx.notify();
+        self.notify_shell(cx);
     }
 
     pub(super) fn queue_toggle(&mut self, _: &ToggleQueue, _: &mut Window, cx: &mut Context<Self>) {
@@ -161,3 +179,7 @@ impl Jondo {
         cx.notify();
     }
 }
+
+#[cfg(test)]
+#[path = "actions.test.rs"]
+mod tests;

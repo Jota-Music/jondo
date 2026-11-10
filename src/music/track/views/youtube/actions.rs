@@ -17,16 +17,16 @@ pub fn wire(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) {
         window,
         |app, state, event: &InputEvent, window, cx| match event {
             InputEvent::Change => {
-                app.ui.editor.link = state.read(cx).value().to_string();
-                app.ui.editor.load = false;
-                let raw = app.ui.editor.link.trim().to_owned();
+                app.editor.link = state.read(cx).value().to_string();
+                app.editor.load = false;
+                let raw = app.editor.link.trim().to_owned();
                 let resolved = parse_video(stripped(&raw));
-                app.ui.editor.resolving = resolved.as_deref().is_some_and(|id| id != raw.as_str());
-                app.ui.editor.link_at = app.ui.editor.resolving.then(Instant::now);
+                app.editor.resolving = resolved.as_deref().is_some_and(|id| id != raw.as_str());
+                app.editor.link_at = app.editor.resolving.then(Instant::now);
                 cx.notify();
             }
             InputEvent::PressEnter { .. } => {
-                app.ui.editor.link = state.read(cx).value().to_string();
+                app.editor.link = state.read(cx).value().to_string();
                 let _ = window;
                 save(app, cx);
                 cx.notify();
@@ -47,13 +47,13 @@ pub fn wire(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) {
         window,
         |app, state, event: &InputEvent, _, cx| match event {
             InputEvent::Change => {
-                app.ui.editor.search = state.read(cx).value().to_string();
-                app.ui.editor.search_at = Some(Instant::now());
+                app.editor.search = state.read(cx).value().to_string();
+                app.editor.search_at = Some(Instant::now());
                 cx.notify();
             }
             InputEvent::PressEnter { .. } => {
                 let value = state.read(cx).value().trim().to_owned();
-                app.ui.editor.search_at = None;
+                app.editor.search_at = None;
                 submit(app, value, cx);
                 cx.notify();
             }
@@ -63,21 +63,20 @@ pub fn wire(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) {
 }
 
 pub fn switch(app: &mut Jondo, mode: Mode, window: &mut Window, cx: &mut Context<Jondo>) {
-    if app.ui.editor.mode == mode {
-        app.ui.editor.focus = true;
+    if app.editor.mode == mode {
+        app.editor.focus = true;
         return;
     }
 
     if mode == Mode::Assign {
         let preview = &mut app.preview;
         app.player.update(cx, |player, _| preview.stop(player));
-        app.ui.editor.search_at = None;
+        app.editor.search_at = None;
     }
 
-    app.ui.editor.mode = mode;
-    app.ui.editor.focus = true;
-    app.ui
-        .editor
+    app.editor.mode = mode;
+    app.editor.focus = true;
+    app.editor
         .slide
         .start(if mode == Mode::Search { 1.0 } else { 0.0 }, Instant::now());
 
@@ -86,7 +85,7 @@ pub fn switch(app: &mut Jondo, mode: Mode, window: &mut Window, cx: &mut Context
     }
 
     let value = {
-        let editor = &mut app.ui.editor;
+        let editor = &mut app.editor;
         if editor.search.trim().is_empty()
             && let Some(song) = &editor.song
         {
@@ -117,11 +116,11 @@ pub(super) fn search(app: &mut Jondo, query: String) {
 }
 
 pub fn save(app: &mut Jondo, cx: &mut Context<Jondo>) {
-    let Some(song) = app.ui.editor.song.clone() else {
+    let Some(song) = app.editor.song.clone() else {
         return;
     };
 
-    let raw = stripped(&app.ui.editor.link).to_owned();
+    let raw = stripped(&app.editor.link).to_owned();
     let id = match parse_video(&raw) {
         Some(id) => id,
         None if raw.is_empty() => String::new(),
@@ -132,7 +131,6 @@ pub fn save(app: &mut Jondo, cx: &mut Context<Jondo>) {
     };
 
     let before = app
-        .ui
         .editor
         .song
         .as_ref()

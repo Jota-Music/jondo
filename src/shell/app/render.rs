@@ -5,11 +5,14 @@ use super::*;
 impl gpui::Render for Jondo {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl gpui::IntoElement {
         crate::shared::ui::views::design::theme::follow(window);
-        self.covers.begin_frame();
-        self.covers.prune();
+        // The cover frame advances with the page (`Screen::render`), not here:
+        // a shell frame that skips the page must not age the covers it paints.
         // The clock owns every state change; render only wakes it when motion
         // starts, so the first animation frame does not wait for the idle poll.
-        if self.animates(cx) {
+        // Covers are polled on the clock too: this render may have just asked
+        // for the first one, and waiting out an idle sleep would leave it
+        // blank for that long.
+        if self.animates(cx) || self.covers.pending() {
             self.clock.notify_one();
         }
 

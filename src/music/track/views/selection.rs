@@ -4,6 +4,7 @@ use gpui::{AnyElement, Context, IntoElement, ParentElement, Stateful, Styled, di
 
 use crate::shared::i18n;
 use crate::shared::music::domain::Song;
+use crate::shared::ui::views::components::paint::Scope;
 use crate::shared::ui::views::components::{banner, button, text};
 use crate::shared::ui::views::design::icons;
 use crate::shared::ui::views::design::theme;
@@ -44,7 +45,7 @@ pub fn bar(app: &mut Jondo, cx: &mut Context<Jondo>) -> AnyElement {
     let (songs, removable) = current(app, cx);
     let selected: Vec<Song> = songs
         .iter()
-        .filter(|song| app.ui.selection.iter().any(|id| id == &song.id))
+        .filter(|song| app.selection.iter().any(|id| id == &song.id))
         .cloned()
         .collect();
     if selected.len() <= 1 {
@@ -82,9 +83,11 @@ pub fn bar(app: &mut Jondo, cx: &mut Context<Jondo>) -> AnyElement {
                 .flex()
                 .items_center()
                 .gap(theme::unit(4.0))
-                .child(actions::trigger(
+                .child(actions::trigger_in(
+                    Scope::Shell,
                     cx,
                     "selection-actions",
+                    28.0,
                     move |app, cx| {
                         let ids: Vec<String> = targets.iter().map(|song| song.id.clone()).collect();
                         let remove = playlist.clone().map(|id| Command::Remove(id, ids));
@@ -109,7 +112,8 @@ pub fn bar(app: &mut Jondo, cx: &mut Context<Jondo>) -> AnyElement {
 }
 
 fn clear(cx: &mut Context<Jondo>) -> Stateful<gpui::Div> {
-    button::dismiss(
+    button::dismiss_in(
+        Scope::Shell,
         "selection-clear",
         cx.listener(|app, _: &gpui::ClickEvent, _, cx| {
             app.clear_selection();

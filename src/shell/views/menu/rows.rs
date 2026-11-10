@@ -4,6 +4,7 @@ use gpui::{
     StatefulInteractiveElement, Styled, div,
 };
 
+use crate::shared::ui::views::components::paint::{self, Scope};
 use crate::shared::ui::views::components::{hover, text};
 use crate::shared::ui::views::design::icons;
 use crate::shared::ui::views::design::theme;
@@ -62,9 +63,15 @@ pub(super) fn context_row(
         .aria_position_in_set(index + 1)
         .on_hover({
             let id = id.clone();
-            move |on: &bool, _, cx| {
-                hover::set(&id, *on, std::time::Instant::now());
-                cx.refresh_windows();
+            move |on: &bool, window, cx| {
+                hover::set_in(
+                    Scope::Shell,
+                    &id,
+                    *on,
+                    std::time::Instant::now(),
+                    window.last_input_was_touch(),
+                );
+                paint::paint(Scope::Shell, cx);
             }
         })
         .on_click(cx.listener(move |app, _: &gpui::ClickEvent, window, cx| {
@@ -129,9 +136,15 @@ pub(super) fn choice_row(
         .aria_position_in_set(index + 1)
         .on_hover({
             let id = id.clone();
-            move |on: &bool, _, cx| {
-                hover::set(&id, *on, std::time::Instant::now());
-                cx.refresh_windows();
+            move |on: &bool, window, cx| {
+                hover::set_in(
+                    Scope::Shell,
+                    &id,
+                    *on,
+                    std::time::Instant::now(),
+                    window.last_input_was_touch(),
+                );
+                paint::paint(Scope::Shell, cx);
             }
         })
         .on_click(cx.listener(move |app, _: &gpui::ClickEvent, window, cx| {

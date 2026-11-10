@@ -149,14 +149,14 @@ impl Jondo {
             Reorder::Queue => (
                 "queue".to_owned(),
                 self.player.read(cx).queue.songs.len(),
-                self.ui.queue_open && self.ui.selection.is_empty(),
+                self.ui.queue_open && self.selection.is_empty(),
             ),
             Reorder::Playlist(id) => {
                 let here = matches!(&self.route, Route::Playlist(route) if route == id);
                 let table = self.rows(id, cx);
                 let live = here
                     && self.store.playlist(id).is_some()
-                    && self.ui.selection.is_empty()
+                    && self.selection.is_empty()
                     && self.ui.playlist_query.trim().is_empty()
                     && self.ui.playlist_order == Order::Added
                     && crate::shared::music::domain::reorderable(true, &table.full, &table.ids);
@@ -268,7 +268,7 @@ impl Jondo {
         self.ui.drag_pointer?;
         let (key, len) = match &kind {
             Reorder::Queue => ("queue".to_owned(), self.player.read(cx).queue.songs.len()),
-            Reorder::Playlist(id) => (format!("playlist:{id}"), self.songs(id, cx).len()),
+            Reorder::Playlist(id) => (format!("playlist:{id}"), self.song_count(id, cx)),
         };
 
         if len < 2 {

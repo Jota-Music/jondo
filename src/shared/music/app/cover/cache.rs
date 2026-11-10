@@ -199,6 +199,13 @@ impl Covers {
         self.frame += 1;
     }
 
+    /// How many frames the page has painted. The page owns the counter, so a
+    /// shell frame that skipped the page must not move it.
+    #[cfg(test)]
+    pub(crate) fn page_frames(&self) -> u64 {
+        self.frame
+    }
+
     /// Drops the covers no frame has painted since the previous one. It runs at
     /// the start of a frame, before the tree asks for images: a cover the last
     /// frame painted stays, and one that scrolled away is released. Without the

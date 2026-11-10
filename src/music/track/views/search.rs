@@ -3,12 +3,14 @@ use gpui::{
     AnyElement, Context, Div, InteractiveElement, IntoElement, ParentElement, ScrollStrategy,
     Stateful, StatefulInteractiveElement, Styled, Window, div,
 };
+use std::rc::Rc;
 
 use crate::music::library::views::playlist;
 use crate::music::track::views::{list, row};
 use crate::shared::i18n::t;
 use crate::shared::music::domain::Channel;
 use crate::shared::music::views::cover;
+use crate::shared::ui::views::components::paint::{self, Scope};
 use crate::shared::ui::views::components::{grid, hint, hover, loading, panel, text};
 use crate::shared::ui::views::design::icons;
 use crate::shared::ui::views::design::theme;
@@ -142,9 +144,15 @@ fn tab(app: &mut Jondo, cx: &mut Context<Jondo>, id: &str, icon: icons::Icon) ->
         .when(active, |this| this.bg(theme::ZINC_800))
         .on_hover({
             let element = element.clone();
-            move |on: &bool, _, cx| {
-                hover::set(&element, *on, std::time::Instant::now());
-                cx.refresh_windows();
+            move |on: &bool, window, cx| {
+                hover::set_in(
+                    Scope::Page,
+                    &element,
+                    *on,
+                    std::time::Instant::now(),
+                    window.last_input_was_touch(),
+                );
+                paint::paint(Scope::Page, cx);
             }
         })
         .on_click(cx.listener(move |app, _: &gpui::ClickEvent, _, cx| {
@@ -219,7 +227,7 @@ fn playlists_content(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jond
         cx,
         "search-playlists",
         "search-playlists",
-        &playlists,
+        Rc::new(playlists),
         !app.search.list,
     )
 }

@@ -60,11 +60,11 @@ pub(super) fn browser_import(
                             )
                         })
                         .collect();
-                    app.ui.menu = Some(
+                    app.menu = Some(
                         Menu::choice(event.position(), t("Browser"), items)
                             .origin("settings-browser"),
                     );
-                    cx.notify();
+                    app.notify_shell(cx);
                 }))
                 .child(text::text(browser, 14.0, theme::ZINC_100))
                 .child(icons::icon(icons::CHEVRON_DOWN, 16.0, theme::MUTED)),

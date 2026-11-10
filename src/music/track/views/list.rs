@@ -67,6 +67,7 @@ pub fn show(app: &mut Jondo, cx: &mut Context<Jondo>, list: List) -> AnyElement 
                 above,
             )
             .on_click(cx.listener(move |app, _: &gpui::ClickEvent, _, cx| {
+                cx.stop_propagation();
                 app.scroll(key.clone())
                     .scroll_to_item(index, ScrollStrategy::Center);
                 cx.notify();
@@ -112,7 +113,7 @@ pub fn show(app: &mut Jondo, cx: &mut Context<Jondo>, list: List) -> AnyElement 
         .relative()
         .size_full()
         .on_click(cx.listener(|app, _: &gpui::ClickEvent, _, cx| {
-            if !app.ui.selection.is_empty() {
+            if !app.selection.is_empty() {
                 app.clear_selection();
                 cx.notify();
             }

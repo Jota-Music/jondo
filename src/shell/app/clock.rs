@@ -2,7 +2,6 @@ use std::time::{Duration, Instant};
 
 use gpui::{Context, Window};
 
-use crate::music::player::domain::queue::Repeat;
 use crate::shared::ui::views::design::theme;
 
 use super::*;
@@ -40,21 +39,23 @@ impl Jondo {
 
     pub(super) fn animates(&self, cx: &gpui::App) -> bool {
         let player = self.player.read(cx);
+        // The sheets are not here on purpose: a sheet requests its own frames
+        // while it moves and marks them as motion, so the clock waking every
+        // 16ms for the same slide would only add a pump of network, events and
+        // cover polls per frame of it.
         player.loading
             || player.seek_preview.is_some()
             || self.preview.playing
             || self.preview.pending
             || self.ui.drag_scroll
-            || self.covers.pending()
-            || self.toast.is_some()
-            || self.ui.closing.is_some()
-            || self.ui.backup_closing.is_some()
-            || self.ui.player_closing.is_some()
-            || self.ui.queue_closing.is_some()
-            || self.ui.menu_closing.is_some()
+            || self
+                .toast
+                .as_ref()
+                .is_some_and(crate::shell::domain::ui::Toast::animating)
+            || self.menu_closing.is_some()
             || self.ui.search_closing.is_some()
-            || self.ui.editor.waiting()
-            || self.ui.editor.animating()
+            || self.editor.waiting()
+            || self.editor.animating()
             || self.clipboard.busy
             || crate::shared::ui::views::components::hover::running()
     }
@@ -63,7 +64,9 @@ impl Jondo {
         if self.animates(cx) {
             FRAME
         } else if self.player.read(cx).playing {
-            CLOCK
+            if self.disc_shown { CLOCK } else { IDLE }
+        } else if self.covers.pending() {
+            COVER
         } else {
             IDLE
         }
@@ -75,7 +78,7 @@ impl Jondo {
             || self.ui.confirm.is_some()
             || self.ui.removing.is_some()
             || self.ui.picker.is_some()
-            || self.ui.editor.open
+            || self.editor.open
             || self.rooms_ui.confirm.is_some()
             || self.rooms.read(cx).show
             || self.ui.backup_sheet
@@ -83,6 +86,14 @@ impl Jondo {
 
     pub fn pump(&mut self, cx: &mut gpui::Context<Self>) -> bool {
         let mut changed = self.covers.poll();
+        for (name, pane) in &self.panes {
+            let offset = pane.offset().y.as_f32();
+            if self.pane_offsets.get(name).copied() != Some(offset) {
+                self.pane_offsets.insert(name.clone(), offset);
+                changed = true;
+            }
+        }
+
         changed |= self.drain_events(cx);
         if self
             .clipboard
@@ -108,17 +119,7 @@ impl Jondo {
 
         if self.player.update(cx, |player, _| player.tick()) {
             changed = true;
-            let repeat = self.player.read(cx).repeat;
-            if self.rooms.read(cx).live() {
-                self.next(cx);
-            } else if repeat == Repeat::One {
-                self.player.update(cx, |player, _| {
-                    player.seek(0.0);
-                    player.resume();
-                });
-            } else {
-                self.next(cx);
-            }
+            self.next(cx);
         }
 
         if self.player.update(cx, |player, _| player.settle()) {
@@ -156,6 +157,9 @@ impl Jondo {
 
         let pumped = self.pump(cx);
         if pumped {
+            // The pump moved real data, not just chrome: force the page back
+            // into the frame even if a shell-only notify marked it as motion.
+            crate::shell::app::motion::clear();
             cx.notify();
         }
 
@@ -171,8 +175,16 @@ impl Jondo {
 
         if self.route != *self.history.current() {
             self.route = self.history.current().clone();
-            self.route_key = format!("route-{:?}", self.route).into();
+            self.route_changed_at = Some(Instant::now());
+            self.paint_page(cx);
         }
+
+        // The vinyl only exists while the current layout shows it, and the
+        // clock owns that decision: render must not carry application state.
+        let narrow = window.viewport_size().width < theme::unit(768.0);
+        let has_song = self.player.read(cx).current().is_some();
+        self.disc_shown =
+            has_song && ((!narrow && !self.ui.compact) || (narrow && self.ui.player_open));
 
         if !self.pin_applied {
             self.pin_applied = true;
@@ -191,7 +203,13 @@ impl Jondo {
 
         #[cfg(target_os = "android")]
         if self.animates(cx) {
-            window.request_animation_frame();
+            cx.notify();
+        }
+
+        // Nothing changed: this frame only advances motion, so the page under
+        // it keeps the frame it already painted.
+        if !pumped && self.needs_frames(cx) {
+            crate::shell::app::motion::note();
         }
 
         let busy = pumped || self.needs_frames(cx);

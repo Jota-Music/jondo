@@ -10,6 +10,7 @@ use gpui::{
 
 use crate::music::track::views::{actions, credits};
 use crate::shared::music::views::cover;
+use crate::shared::ui::views::components::paint::Scope;
 use crate::shared::ui::views::components::{hover, text};
 use crate::shared::ui::views::design::icons;
 use crate::shared::ui::views::design::theme;
@@ -38,7 +39,8 @@ pub(super) fn queue_action(
         theme::ZINC_800
     };
 
-    hover::hover(
+    hover::hover_in(
+        Scope::Shell,
         id,
         enabled && live,
         move |fade| {
@@ -79,12 +81,12 @@ pub(super) fn queue_row(
     );
     let row_id = gpui::ElementId::Name(format!("queue-row-{index}").into());
     let id = song.id.clone();
-    let selected = app.ui.selection.iter().any(|item| item == &id);
+    let selected = app.selection.iter().any(|item| item == &id);
     let visible = visible.clone();
     let press = cx.listener(
         move |app: &mut Jondo, event: &gpui::MouseDownEvent, _, cx| {
             app.ui.pressed_queue = None;
-            if app.player.read(cx).queue.songs.len() > 1 && app.ui.selection.is_empty() {
+            if app.player.read(cx).queue.songs.len() > 1 && app.selection.is_empty() {
                 app.ui.pressed_queue = Some((index, event.position));
             }
 
@@ -116,7 +118,7 @@ pub(super) fn queue_row(
                     return;
                 }
 
-                hover::set(&id, false, std::time::Instant::now());
+                hover::set_in(Scope::Shell, &id, false, std::time::Instant::now(), false);
                 app.ui.reorder = Some(Reorder::Queue);
             }
 
@@ -141,6 +143,7 @@ pub(super) fn queue_row(
     let live = !app.dragging();
     div()
         .id(row_id.clone())
+        .debug_selector(move || format!("queue-row-{index}"))
         .relative()
         .w_full()
         .h(theme::unit(ROW))
@@ -161,35 +164,45 @@ pub(super) fn queue_row(
         .when(dropping, |this| this.bg(theme::alpha(app.accent, 0.15)))
         .on_hover(cx.listener({
             let id = row_id.clone();
-            move |_, on: &bool, _, cx| {
-                hover::set(&id, *on, std::time::Instant::now());
-                cx.refresh_windows();
+            move |app, on: &bool, window, cx| {
+                hover::set_in(
+                    Scope::Shell,
+                    &id,
+                    *on,
+                    std::time::Instant::now(),
+                    window.last_input_was_touch(),
+                );
+                app.notify_shell(cx);
             }
         }))
         .on_mouse_down(gpui::MouseButton::Left, press)
         .on_mouse_down(
             gpui::MouseButton::Right,
             cx.listener(move |app, event: &gpui::MouseDownEvent, _, cx| {
-                app.ui.menu = Some(Menu::context(
+                app.menu = Some(Menu::context(
                     event.position,
                     None,
                     actions::queue(app, cx, index),
                     0.0,
                 ));
-                cx.notify();
+                app.notify_shell(cx);
             }),
         )
         .on_mouse_move(over)
         .on_click(cx.listener(move |app, event: &gpui::ClickEvent, _, cx| {
             if app.ui.drag_queue_from.is_some() {
+                // The click stops the mouse up here, so the sheet never sees
+                // it: settle the drag before swallowing the click.
+                app.finish_drag(cx);
                 cx.stop_propagation();
+                cx.notify();
                 return;
             }
 
             cx.stop_propagation();
             let touch = cfg!(target_os = "android") || matches!(event, gpui::ClickEvent::Touch(_));
             if touch {
-                if app.ui.selection.is_empty() {
+                if app.selection.is_empty() {
                     app.player.update(cx, |player, _| player.queue.at = index);
                     app.play_current(cx);
                 } else {
@@ -208,8 +221,8 @@ pub(super) fn queue_row(
                 app.player.update(cx, |player, _| player.queue.at = index);
                 app.play_current(cx);
             } else if modifiers.shift
-                && !app.ui.selection.is_empty()
-                && let Some(anchor) = app.ui.anchor
+                && !app.selection.is_empty()
+                && let Some(anchor) = app.anchor
             {
                 app.select_range(&visible, anchor, index);
             } else if modifiers.platform || modifiers.control {
@@ -321,9 +334,11 @@ fn tail(app: &mut Jondo, cx: &mut Context<Jondo>, index: usize, narrow: bool, li
             index != app.player.read(cx).queue.at && index != app.player.read(cx).queue.at + 1;
         let mut actions = div().flex().items_center().gap(theme::unit(2.0));
         if narrow {
-            actions = actions.child(actions::trigger(
+            actions = actions.child(actions::trigger_in(
+                Scope::Shell,
                 cx,
                 format!("queue-menu-{index}"),
+                28.0,
                 move |app, cx| (None, actions::queue(app, cx, index)),
                 0.0,
             ));

@@ -51,13 +51,14 @@ impl Jondo {
         });
     }
 
-    fn open_catalog(&mut self, query: &str) {
+    fn open_catalog(&mut self, query: &str, cx: &mut gpui::Context<Self>) {
         self.ui.query = query.to_owned();
         self.history
             .open(Route::Catalog(SearchType::Track, query.to_owned()));
         self.route = self.history.current().clone();
         self.route_changed_at = Some(Instant::now());
         self.clear_selection();
+        self.paint_page(cx);
     }
 
     pub fn catalog_search(&mut self, query: String, cx: &mut gpui::Context<Self>) {
@@ -118,7 +119,7 @@ impl Jondo {
                 return;
             }
 
-            self.open_catalog(&query);
+            self.open_catalog(&query, cx);
             if self.settings.read(cx).spotify == SpotifyState::Failed {
                 let error = self
                     .settings
@@ -138,7 +139,7 @@ impl Jondo {
             return;
         };
 
-        self.open_catalog(&query);
+        self.open_catalog(&query, cx);
         self.catalog.update(cx, |catalog, _| {
             catalog.pending = None;
             catalog.begin(&query);
@@ -185,8 +186,8 @@ impl Jondo {
         self.ui.search_open = true;
         self.history.open(Route::Search(query.clone()));
         self.route = self.history.current().clone();
-        self.route_key = format!("route-{:?}", self.route).into();
         self.route_changed_at = Some(Instant::now());
+        self.paint_page(cx);
         let list = self.search.list;
         let mut search = SearchState {
             query: query.clone(),

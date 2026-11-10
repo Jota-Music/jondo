@@ -68,8 +68,8 @@ pub(super) fn execute(
         Command::Open(route) => app.open(route, cx),
         Command::SearchType(kind) => {
             app.ui.search_type = kind;
-            app.ui.search_focus = true;
             app.refresh_search_placeholder(window, cx);
+            app.focus_search(window, cx);
         }
         Command::PlaylistOrder(order) => app.ui.playlist_order = order,
         Command::ChannelOrder(order) => app.ui.channel_order = order,

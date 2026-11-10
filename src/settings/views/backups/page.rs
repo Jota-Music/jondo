@@ -27,7 +27,6 @@ pub(crate) fn backups(app: &mut Jondo, narrow: bool, cx: &mut Context<Jondo>) ->
     let status = app.store.sync_status.clone();
     let pending = backup::pending(&app.store);
     let interval_open = app
-        .ui
         .menu
         .as_ref()
         .is_some_and(|menu| menu.origin == Some("settings-interval"));
@@ -327,11 +326,11 @@ fn toggles(
                             )
                         })
                         .collect();
-                    app.ui.menu = Some(
+                    app.menu = Some(
                         Menu::choice(event.position(), t("Interval"), items)
                             .origin("settings-interval"),
                     );
-                    cx.notify();
+                    app.notify_shell(cx);
                 }))
                 .child(text::text(format!("{interval} min"), 12.0, theme::ZINC_100))
                 .child(icons::icon(icons::CHEVRON_DOWN, 14.0, theme::MUTED)),

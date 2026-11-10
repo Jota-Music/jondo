@@ -4,6 +4,7 @@ use gpui::{
 };
 
 use crate::shared::ui::views::components::hover;
+use crate::shared::ui::views::components::paint::Scope;
 use crate::shared::ui::views::design::icons::{self, Icon};
 use crate::shared::ui::views::design::theme;
 use gpui_kit::component::tooltip::Tooltip;
@@ -33,12 +34,36 @@ pub fn icon_button(
     enabled: bool,
     on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
+    icon_button_in(
+        Scope::Both,
+        id,
+        icon,
+        size,
+        color,
+        button,
+        enabled,
+        on_click,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn icon_button_in(
+    scope: Scope,
+    id: impl Into<ElementId>,
+    icon: Icon,
+    size: f32,
+    color: Rgba,
+    button: f32,
+    enabled: bool,
+    on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
     let base = theme::alpha(theme::ZINC_800, 0.0);
     let lit = theme::alpha(theme::ZINC_800, 0.8);
     let label = icon.label();
     let named: SharedString = label.to_owned().into();
     actionable(
-        hover::hover(
+        hover::hover_in(
+            scope,
             id,
             enabled,
             move |fade| {
@@ -104,7 +129,16 @@ pub fn dismiss(
     id: impl Into<ElementId>,
     on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
-    hover::hover(
+    dismiss_in(Scope::Both, id, on_click)
+}
+
+pub fn dismiss_in(
+    scope: Scope,
+    id: impl Into<ElementId>,
+    on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
+    hover::hover_in(
+        scope,
         id,
         true,
         |fade| {
@@ -137,10 +171,34 @@ pub fn icon_flat(
     enabled: bool,
     on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
+    icon_flat_in(
+        Scope::Both,
+        id,
+        icon,
+        size,
+        color,
+        button,
+        enabled,
+        on_click,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn icon_flat_in(
+    scope: Scope,
+    id: impl Into<ElementId>,
+    icon: Icon,
+    size: f32,
+    color: Rgba,
+    button: f32,
+    enabled: bool,
+    on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
     let label = icon.label();
     let named: SharedString = label.to_owned().into();
     actionable(
-        hover::hover(
+        hover::hover_in(
+            scope,
             id,
             enabled,
             move |fade| {
@@ -177,10 +235,36 @@ pub fn circle(
     enabled: bool,
     on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
+    circle_in(
+        Scope::Both,
+        id,
+        icon,
+        diameter,
+        icon_size,
+        fill,
+        color,
+        enabled,
+        on_click,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn circle_in(
+    scope: Scope,
+    id: impl Into<ElementId>,
+    icon: Icon,
+    diameter: f32,
+    icon_size: f32,
+    fill: Rgba,
+    color: Rgba,
+    enabled: bool,
+    on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
     let label = icon.label();
     let named: SharedString = label.to_owned().into();
     actionable(
-        hover::hover(
+        hover::hover_in(
+            scope,
             id,
             enabled,
             move |fade| {

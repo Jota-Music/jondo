@@ -7,6 +7,7 @@ use gpui::{
 use crate::shared::i18n::t;
 use crate::shared::music::domain::Source;
 use crate::shared::music::views::cover::brand_mono;
+use crate::shared::ui::views::components::paint::{self, Scope as PaintScope};
 use crate::shared::ui::views::components::{grid as layout, hover, text};
 use crate::shared::ui::views::design::icons;
 use crate::shared::ui::views::design::theme;
@@ -154,9 +155,15 @@ pub(super) fn segment_text(
         .justify_center()
         .when(active, |this| this.bg(theme::ZINC_800))
         .cursor_pointer()
-        .on_hover(move |on: &bool, _, cx| {
-            hover::set(&element, *on, std::time::Instant::now());
-            cx.refresh_windows();
+        .on_hover(move |on: &bool, window, cx| {
+            hover::set_in(
+                PaintScope::Page,
+                &element,
+                *on,
+                std::time::Instant::now(),
+                window.last_input_was_touch(),
+            );
+            paint::paint(PaintScope::Page, cx);
         })
         .on_click(on_click)
         .child(text::weighted(
@@ -211,9 +218,15 @@ pub(super) fn segment(
             )
         })
         .cursor_pointer()
-        .on_hover(move |on: &bool, _, cx| {
-            hover::set(&element, *on, std::time::Instant::now());
-            cx.refresh_windows();
+        .on_hover(move |on: &bool, window, cx| {
+            hover::set_in(
+                PaintScope::Page,
+                &element,
+                *on,
+                std::time::Instant::now(),
+                window.last_input_was_touch(),
+            );
+            paint::paint(PaintScope::Page, cx);
         })
         .on_click(on_click)
         .child(if is_brand {

@@ -1,5 +1,6 @@
 #[cfg(not(target_os = "android"))]
 use crate::shared::i18n::t;
+use crate::shared::ui::views::components::paint::Scope;
 use crate::shared::ui::views::design::icons;
 use crate::shared::ui::views::design::theme;
 use crate::shell::app::{Jondo, Route};
@@ -47,7 +48,7 @@ pub(super) fn bar(
         },
         can_back,
         cx.listener(|app, _: &gpui::ClickEvent, _, cx| {
-            app.back();
+            app.back(cx);
             cx.notify();
         }),
     ));
@@ -62,7 +63,7 @@ pub(super) fn bar(
         },
         can_forward,
         cx.listener(|app, _: &gpui::ClickEvent, _, cx| {
-            app.forward();
+            app.forward(cx);
             cx.notify();
         }),
     ));
@@ -168,7 +169,8 @@ pub(super) fn bar(
             .child(
                 div()
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .child(crate::shared::ui::views::components::button::icon_flat(
+                    .child(crate::shared::ui::views::components::button::icon_flat_in(
+                        Scope::Shell,
                         "search-toggle",
                         icons::SEARCH_BOLD,
                         icon,
@@ -183,7 +185,6 @@ pub(super) fn bar(
                             } else {
                                 app.ui.search_open = true;
                                 app.ui.search_closing = None;
-                                app.ui.search_focus = true;
                                 if let Some(input) = app.fields.get("search").cloned() {
                                     input.update(cx, |state, cx| {
                                         state.focus_handle(cx).focus(window, cx)
@@ -285,8 +286,15 @@ fn nav_icon(
     enabled: bool,
     on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
-    crate::shared::ui::views::components::button::icon_flat(
-        id, icon, size, color, 40.0, enabled, on_click,
+    crate::shared::ui::views::components::button::icon_flat_in(
+        Scope::Shell,
+        id,
+        icon,
+        size,
+        color,
+        40.0,
+        enabled,
+        on_click,
     )
 }
 
@@ -322,7 +330,8 @@ fn window_control(
     };
 
     let label = icon.label();
-    crate::shared::ui::views::components::hover::hover(
+    crate::shared::ui::views::components::hover::hover_in(
+        Scope::Shell,
         id,
         true,
         move |fade| {
@@ -349,7 +358,8 @@ fn pin_control(
     on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
     let base = if on { theme::TEXT } else { theme::MUTED };
-    crate::shared::ui::views::components::hover::hover(
+    crate::shared::ui::views::components::hover::hover_in(
+        Scope::Shell,
         "pin",
         true,
         move |fade| {

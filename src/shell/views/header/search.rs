@@ -1,6 +1,6 @@
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, Context, Div, Focusable, InteractiveElement, IntoElement, ParentElement, Stateful,
+    AnyElement, Context, Div, InteractiveElement, IntoElement, ParentElement, Stateful,
     StatefulInteractiveElement, Styled, Window, div,
 };
 
@@ -25,10 +25,6 @@ pub(super) fn search_panel(
     icon: f32,
 ) -> AnyElement {
     let field = app.field("search", "", &placeholder(app), window, cx);
-    if app.ui.search_focus {
-        field.update(cx, |state, cx| state.focus_handle(cx).focus(window, cx));
-        app.ui.search_focus = false;
-    }
 
     let field_height = if narrow {
         MOBILE_FIELD_HEIGHT
@@ -110,9 +106,8 @@ fn source_toggle(
                 .when(live == Source::YouTube, |this| this.bg(theme::ZINC_800))
                 .on_click(cx.listener(|app, _: &gpui::ClickEvent, window, cx| {
                     app.ui.search_source = Source::YouTube;
-                    app.ui.search_focus = true;
                     app.refresh_search_placeholder(window, cx);
-                    cx.notify();
+                    app.notify_shell(cx);
                 }))
                 .child(if live == Source::YouTube {
                     brand(Source::YouTube, icon)
@@ -133,9 +128,8 @@ fn source_toggle(
                     .when(live == Source::Spotify, |this| this.bg(theme::ZINC_800))
                     .on_click(cx.listener(|app, _: &gpui::ClickEvent, window, cx| {
                         app.ui.search_source = Source::Spotify;
-                        app.ui.search_focus = true;
                         app.refresh_search_placeholder(window, cx);
-                        cx.notify();
+                        app.notify_shell(cx);
                     }))
                     .child(if live == Source::Spotify && ready {
                         brand(Source::Spotify, icon)
@@ -160,7 +154,6 @@ fn type_select(
 ) -> Stateful<Div> {
     let width = 116.0;
     let open = app
-        .ui
         .menu
         .as_ref()
         .is_some_and(|menu| menu.origin == Some("search-type"));
@@ -199,7 +192,7 @@ fn type_select(
             app.ui.search_type.label()
         ))
         .on_click(cx.listener(|app, event: &gpui::ClickEvent, _, cx| {
-            app.ui.menu = Some(
+            app.menu = Some(
                 Menu::choice(
                     event.position(),
                     t("Search type"),
@@ -207,7 +200,7 @@ fn type_select(
                 )
                 .origin("search-type"),
             );
-            cx.notify();
+            app.notify_shell(cx);
         }))
         .when(height > 0.0, |this| this)
 }

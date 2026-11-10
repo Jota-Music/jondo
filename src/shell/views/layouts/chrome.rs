@@ -12,9 +12,16 @@ use crate::shell::app::Jondo;
 /// absolute children are positioned against the border box, not the shell's
 /// padded content box.
 pub fn bottom(window: &Window, narrow: bool) -> f32 {
+    system(window) + if narrow { theme::NAV_HEIGHT } else { 0.0 }
+}
+
+/// What the system bars reserve at the bottom edge, without the keyboard. The
+/// shell paints this strip with the page background, so a transparent system
+/// navigation bar shows the app colour instead of the sheet sliding out behind
+/// it.
+pub fn system(window: &Window) -> f32 {
     let (_, inset, _, _) = safe_area();
-    let system = system_bottom(f32::from(window.viewport_size().width), inset);
-    system + if narrow { theme::NAV_HEIGHT } else { 0.0 }
+    system_bottom(f32::from(window.viewport_size().width), inset)
 }
 
 /// The keyboard is reported as a growing bottom inset, and the shell must not

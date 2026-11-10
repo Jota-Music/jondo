@@ -5,6 +5,7 @@ use gpui::{
 use gpui_kit::component::tooltip::Tooltip;
 
 use crate::shared::i18n::t;
+use crate::shared::ui::views::components::paint::Scope;
 use crate::shared::ui::views::components::{button, hover, progress, text};
 use crate::shared::ui::views::design::icons::{self, Icon};
 use crate::shared::ui::views::design::theme;
@@ -59,7 +60,8 @@ pub(super) fn preview_bar(app: &mut Jondo, cx: &mut Context<Jondo>) -> impl Into
                 .child(if pending {
                     button::spinner(16.0, theme::ZINC_300).into_any_element()
                 } else {
-                    button::icon_button(
+                    button::icon_button_in(
+                        Scope::Shell,
                         "youtube-preview",
                         if playing { icons::PAUSE } else { icons::PLAY },
                         16.0,
@@ -120,7 +122,8 @@ fn soft_button(
     color: Rgba,
     on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut gpui::App) + 'static,
 ) -> impl IntoElement {
-    hover::hover(
+    hover::hover_in(
+        Scope::Shell,
         id,
         true,
         move |fade| {

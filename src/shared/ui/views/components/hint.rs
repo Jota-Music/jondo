@@ -1,3 +1,4 @@
+use gpui::prelude::FluentBuilder as _;
 use gpui::{
     App, BoxShadow, Div, ElementId, InteractiveElement, IntoElement, ParentElement, Rgba, Stateful,
     StatefulInteractiveElement, Styled, Window, div, relative,
@@ -109,14 +110,16 @@ fn glow(tint: Rgba) -> Div {
                 .w(theme::unit(128.0))
                 .h(theme::unit(128.0))
                 .rounded_full()
-                .shadow(vec![
-                    BoxShadow::new(
-                        theme::unit(0.0),
-                        theme::unit(0.0),
-                        theme::alpha(tint, 0.35).into(),
-                    )
-                    .blur_radius(theme::unit(64.0)),
-                ]),
+                .when(!cfg!(target_os = "android"), |this| {
+                    this.shadow(vec![
+                        BoxShadow::new(
+                            theme::unit(0.0),
+                            theme::unit(0.0),
+                            theme::alpha(tint, 0.35).into(),
+                        )
+                        .blur_radius(theme::unit(64.0)),
+                    ])
+                }),
         )
 }
 

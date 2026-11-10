@@ -10,6 +10,7 @@ use gpui_kit::base::ScrollableMask;
 
 use crate::shared::i18n::t;
 use crate::shared::music::views::cover;
+use crate::shared::ui::views::components::paint::Scope;
 use crate::shared::ui::views::components::{hover, loading, scroll, text};
 use crate::shared::ui::views::design::icons;
 use crate::shared::ui::views::design::theme;
@@ -24,14 +25,14 @@ pub(super) fn results(
     slide: f32,
 ) -> AnyElement {
     let height = window.viewport_size().height.as_f32() * 0.4;
-    let content = if app.ui.editor.query.is_empty() {
+    let content = if app.editor.query.is_empty() {
         div()
             .py(theme::unit(24.0))
             .child(text::text(t("Type to search YouTube."), 14.0, theme::FAINT))
             .into_any_element()
-    } else if app.ui.editor.results.loading {
+    } else if app.editor.results.loading {
         loading::spinner().into_any_element()
-    } else if app.ui.editor.results.error.is_some() {
+    } else if app.editor.results.error.is_some() {
         div()
             .child(text::text(
                 t("Could not search YouTube."),
@@ -39,13 +40,13 @@ pub(super) fn results(
                 theme::DANGER,
             ))
             .into_any_element()
-    } else if app.ui.editor.results.empty() {
+    } else if app.editor.results.empty() {
         div()
             .child(text::text(t("No videos found."), 14.0, theme::FAINT))
             .into_any_element()
     } else {
         let scroll = app.pane("youtube-results");
-        let videos = app.ui.editor.results.list().to_vec();
+        let videos = app.editor.results.list().to_vec();
         let mut list = div()
             .id("youtube-results")
             .size_full()
@@ -126,9 +127,15 @@ fn video_row(
         .bg(theme::alpha(theme::ZINC_800, background))
         .on_hover(cx.listener({
             let id = row_id.clone();
-            move |_, on: &bool, _, cx| {
-                hover::set(&id, *on, Instant::now());
-                cx.refresh_windows();
+            move |app, on: &bool, window, cx| {
+                hover::set_in(
+                    Scope::Page,
+                    &id,
+                    *on,
+                    Instant::now(),
+                    window.last_input_was_touch(),
+                );
+                app.paint_page(cx);
             }
         }))
         .on_click(
@@ -137,9 +144,9 @@ fn video_row(
                     event,
                     gpui::ClickEvent::Mouse(mouse) if mouse.down.click_count >= 2
                 );
-                app.ui.editor.link = select.clone();
-                app.ui.editor.resolving = false;
-                app.ui.editor.link_at = None;
+                app.editor.link = select.clone();
+                app.editor.resolving = false;
+                app.editor.link_at = None;
                 app.set_field("youtube-link", &select, window, cx);
                 if double {
                     let preview_state = &mut app.preview;

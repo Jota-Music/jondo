@@ -21,12 +21,10 @@ impl Jondo {
             Route::Playlist(id) => {
                 self.catalog
                     .update(cx, |catalog, _| catalog.playlists.remove(id));
-                self.ensure_playlist(id, cx);
             }
             Route::Album(id) => {
                 self.catalog
                     .update(cx, |catalog, _| catalog.albums.remove(id));
-                self.ensure_album(id, cx);
             }
             Route::Artist(id) => {
                 self.catalog
@@ -34,12 +32,10 @@ impl Jondo {
                 self.catalog.update(cx, |catalog, _| {
                     catalog.discography.retain(|(artist_id, _)| artist_id != id)
                 });
-                self.ensure_artist(id, cx);
             }
             Route::User(username) => {
                 self.catalog
                     .update(cx, |catalog, _| catalog.users.remove(username));
-                self.ensure_user(username, cx);
             }
             Route::Channel(id) => {
                 self.catalog
@@ -47,54 +43,83 @@ impl Jondo {
                 self.ui.channel_tab = "videos".to_owned();
                 self.ui.channel_query.clear();
                 self.ui.channel_order = Order::Added;
-                self.ensure_channel(id, cx);
             }
-            Route::Catalog(kind, query) => {
-                if kind == &SearchType::Track {
-                    if self.catalog.read(cx).failed.as_deref() != Some(query) {
-                        self.catalog.update(cx, |catalog, _| catalog.failed = None);
-                    }
-
-                    self.ensure_catalog(query, cx);
-                }
+            Route::Catalog(SearchType::Track, query)
+                if self.catalog.read(cx).failed.as_deref() != Some(query) =>
+            {
+                self.catalog.update(cx, |catalog, _| catalog.failed = None);
             }
-            Route::Following => self.ensure_following(cx),
-            Route::Rooms => {
-                if !self.rooms.read(cx).relay.trim().is_empty()
-                    && self.rooms.read(cx).checked_at.is_none()
-                    && self.rooms.read(cx).check_due.is_none()
-                    && !self.rooms.read(cx).checking
-                {
-                    self.rooms.update(cx, |rooms, _| rooms.schedule_check());
-                }
-
-                self.ensure_room_statuses(cx)
-            }
-            Route::Settings if !self.rooms.read(cx).relay.trim().is_empty() => {
-                self.rooms.update(cx, |rooms, _| rooms.schedule_check())
-            }
-            Route::Settings => {}
             _ => {}
         }
 
         self.history.open(route);
         self.route = self.history.current().clone();
         self.route_changed_at = Some(Instant::now());
+        self.paint_page(cx);
+        self.ensure_route(cx);
     }
 
-    pub fn back(&mut self) {
+    /// Loads whatever the current route needs. Route entry calls it after
+    /// clearing the cache it wants refreshed; history calls it too, so the
+    /// page never starts a request from `render`.
+    fn ensure_route(&mut self, cx: &mut gpui::Context<Self>) {
+        match self.route.clone() {
+            Route::Playlist(id) => self.ensure_playlist(&id, cx),
+            Route::Album(id) => self.ensure_album(&id, cx),
+            Route::Artist(id) => {
+                self.ensure_artist(&id, cx);
+                self.ensure_artist_meta(&id, cx);
+            }
+            Route::User(username) => self.ensure_user(&username, cx),
+            Route::Channel(id) => self.ensure_channel(&id, cx),
+            Route::Catalog(SearchType::Track, query) => self.ensure_catalog(&query, cx),
+            Route::Following => {
+                self.ensure_following(cx);
+                self.ensure_follow_meta(cx);
+            }
+            Route::Rooms => {
+                if self.rooms.read(cx).relay.trim().is_empty() {
+                    return;
+                }
+
+                if self.rooms.read(cx).checked_at.is_none()
+                    && self.rooms.read(cx).check_due.is_none()
+                    && !self.rooms.read(cx).checking
+                {
+                    self.rooms.update(cx, |rooms, _| rooms.schedule_check());
+                }
+
+                self.ensure_room_statuses(cx);
+            }
+            Route::Settings => {
+                if !self.rooms.read(cx).relay.trim().is_empty() {
+                    self.rooms.update(cx, |rooms, _| rooms.schedule_check());
+                }
+
+                self.ensure_browsers(cx);
+                self.ensure_update(cx);
+            }
+            _ => {}
+        }
+    }
+
+    pub fn back(&mut self, cx: &mut gpui::Context<Self>) {
         if self.history.back() {
             self.clear_selection();
             self.route = self.history.current().clone();
             self.route_changed_at = Some(Instant::now());
+            self.paint_page(cx);
+            self.ensure_route(cx);
         }
     }
 
-    pub fn forward(&mut self) {
+    pub fn forward(&mut self, cx: &mut gpui::Context<Self>) {
         if self.history.forward() {
             self.clear_selection();
             self.route = self.history.current().clone();
             self.route_changed_at = Some(Instant::now());
+            self.paint_page(cx);
+            self.ensure_route(cx);
         }
     }
 
@@ -112,10 +137,10 @@ impl Jondo {
     }
 
     pub fn close_menu(&mut self) {
-        if let Some(menu) = &self.ui.menu
-            && self.ui.menu_closing.is_none()
+        if let Some(menu) = &self.menu
+            && self.menu_closing.is_none()
         {
-            self.ui.menu_closing = Some((menu.stamp, Instant::now()));
+            self.menu_closing = Some((menu.stamp, Instant::now()));
         }
     }
 
@@ -155,22 +180,21 @@ impl Jondo {
 
     pub fn open_search(&mut self) {
         self.ui.search_open = true;
-        self.ui.search_focus = true;
     }
 
     pub fn select_single(&mut self, id: &str, index: usize) {
-        self.ui.selection = vec![id.to_owned()];
-        self.ui.anchor = Some(index);
+        self.selection = vec![id.to_owned()];
+        self.anchor = Some(index);
     }
 
     pub fn select_toggle(&mut self, id: &str, index: usize) {
-        if let Some(position) = self.ui.selection.iter().position(|item| item == id) {
-            self.ui.selection.remove(position);
+        if let Some(position) = self.selection.iter().position(|item| item == id) {
+            self.selection.remove(position);
         } else {
-            self.ui.selection.push(id.to_owned());
+            self.selection.push(id.to_owned());
         }
 
-        self.ui.anchor = if self.ui.selection.is_empty() {
+        self.anchor = if self.selection.is_empty() {
             None
         } else {
             Some(index)
@@ -179,8 +203,8 @@ impl Jondo {
 
     pub fn select_all(&mut self, songs: &[Song]) {
         for song in songs {
-            if !self.ui.selection.iter().any(|id| id == &song.id) {
-                self.ui.selection.push(song.id.clone());
+            if !self.selection.iter().any(|id| id == &song.id) {
+                self.selection.push(song.id.clone());
             }
         }
     }
@@ -209,15 +233,15 @@ impl Jondo {
     pub fn select_range(&mut self, ids: &[String], anchor: usize, index: usize) {
         let start = anchor.min(index);
         let end = anchor.max(index);
-        self.ui.selection = ids
+        self.selection = ids
             .get(start..=end)
             .map(|slice| slice.to_vec())
             .unwrap_or_default();
     }
 
     pub fn clear_selection(&mut self) {
-        self.ui.selection.clear();
-        self.ui.anchor = None;
+        self.selection.clear();
+        self.anchor = None;
     }
 
     pub fn open_clipboard(&mut self, cx: &mut gpui::Context<Self>) {

@@ -7,6 +7,7 @@ use gpui::{
 use gpui_kit::component::tooltip::Tooltip;
 
 use crate::shared::i18n::t;
+use crate::shared::ui::views::components::paint::Scope;
 use crate::shared::ui::views::components::{banner, button, text};
 use crate::shared::ui::views::design::icons::{self, Icon};
 use crate::shared::ui::views::design::theme;
@@ -90,7 +91,8 @@ pub fn show(app: &mut Jondo, cx: &mut Context<Jondo>) -> AnyElement {
 
     banner::banner()
         .child(action)
-        .child(button::dismiss(
+        .child(button::dismiss_in(
+            Scope::Shell,
             "clipboard-dismiss",
             cx.listener(|app, _: &gpui::ClickEvent, _, cx| {
                 app.dismiss_clipboard();

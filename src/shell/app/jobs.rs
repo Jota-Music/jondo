@@ -77,7 +77,7 @@ pub enum Event {
 }
 
 pub struct Jobs {
-    runtime: tokio::runtime::Runtime,
+    runtime: Option<tokio::runtime::Runtime>,
     sender: tokio::sync::mpsc::UnboundedSender<Event>,
     pub(super) receiver: tokio::sync::mpsc::UnboundedReceiver<Event>,
     pub(super) notify: Arc<tokio::sync::Notify>,
@@ -96,20 +96,38 @@ impl Jobs {
             .expect("tokio runtime");
         let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
         Self {
-            runtime,
+            runtime: Some(runtime),
             sender,
             receiver,
             notify: Arc::new(tokio::sync::Notify::new()),
         }
     }
 
+    /// Drops the runtime without waiting for the blocking tasks still in
+    /// flight. A pass drops this after the window is gone, and a backup or a
+    /// browser scan on a slow mount would otherwise keep the process alive
+    /// long after the close.
+    pub(crate) fn stop(&mut self) {
+        if let Some(runtime) = self.runtime.take() {
+            runtime.shutdown_background();
+        }
+    }
+
+    fn runtime(&self) -> Option<&tokio::runtime::Runtime> {
+        self.runtime.as_ref()
+    }
+
     pub(crate) fn spawn<F>(&self, future: F)
     where
         F: std::future::Future<Output = Event> + Send + 'static,
     {
+        let Some(runtime) = self.runtime() else {
+            return;
+        };
+
         let sender = self.sender.clone();
         let notify = self.notify.clone();
-        self.runtime.spawn(async move {
+        runtime.spawn(async move {
             let event = future.await;
             let _ = sender.send(event);
             notify.notify_one();
@@ -120,9 +138,13 @@ impl Jobs {
     where
         F: FnOnce() -> Event + Send + 'static,
     {
+        let Some(runtime) = self.runtime() else {
+            return;
+        };
+
         let sender = self.sender.clone();
         let notify = self.notify.clone();
-        self.runtime.spawn_blocking(move || {
+        runtime.spawn_blocking(move || {
             let event = task();
             let _ = sender.send(event);
             notify.notify_one();
@@ -133,7 +155,9 @@ impl Jobs {
     where
         F: std::future::Future<Output = ()> + Send + 'static,
     {
-        self.runtime.spawn(future);
+        if let Some(runtime) = self.runtime() {
+            runtime.spawn(future);
+        }
     }
 
     /// Work that blocks a thread (files, dialogs) without holding a frame.
@@ -141,7 +165,9 @@ impl Jobs {
     where
         F: FnOnce() + Send + 'static,
     {
-        self.runtime.spawn_blocking(task);
+        if let Some(runtime) = self.runtime() {
+            runtime.spawn_blocking(task);
+        }
     }
 
     pub(crate) fn emit(&self) -> impl Fn(Event) + Clone + Send + 'static {
@@ -153,3 +179,7 @@ impl Jobs {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "jobs.test.rs"]
+mod tests;

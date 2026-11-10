@@ -25,8 +25,12 @@ fn main() {
 
     let mut application = gpui_kit::application().with_assets(gpui_kit::assets::Assets);
 
+    // The store is read once: the windowing request needs one flag from it, and
+    // parsing the state twice only delays the first frame.
+    let store = jondo::shared::storage::Store::load();
+
     #[cfg(target_os = "linux")]
-    if let Some(request) = windowing() {
+    if let Some(request) = windowing(&store) {
         application = application.with_windowing(request);
     }
 
@@ -50,13 +54,14 @@ fn main() {
         };
 
         let (_, view) = gpui_kit::open_window(options, cx, |window, cx| {
-            cx.new(|cx| Jondo::new(window, cx))
+            cx.new(|cx| Jondo::boot(store, window, cx))
         })
         .expect("window");
 
-        let _ = cx.on_window_closed(move |cx, _| {
+        cx.on_window_closed(move |cx, _| {
             view.update(cx, |app, cx| app.shutdown(cx));
-        });
+        })
+        .detach();
     });
 }
 
@@ -69,12 +74,12 @@ fn main() {
 /// opened with the variable gone cannot reach the compositor, and `xdg-open`
 /// then starts nothing at all.
 #[cfg(target_os = "linux")]
-fn windowing() -> Option<WindowingRequest> {
+fn windowing(store: &jondo::shared::storage::Store) -> Option<WindowingRequest> {
     let wayland = ["WAYLAND_DISPLAY", "WAYLAND_SOCKET"]
         .into_iter()
         .any(|key| std::env::var_os(key).is_some_and(|value| !value.is_empty()));
     let x11 = std::env::var_os("DISPLAY").filter(|value| !value.is_empty());
-    let pinned = wayland && x11.is_some() && jondo::shared::storage::Store::load().always_on_top;
+    let pinned = wayland && x11.is_some() && store.always_on_top;
 
     jondo::shared::platform::pin::on_x11(!wayland || pinned);
 

@@ -47,7 +47,6 @@ pub fn show(
     } = toolbar;
     let state = app.field(key, &query, placeholder, window, cx);
     let open = app
-        .ui
         .menu
         .as_ref()
         .is_some_and(|menu| menu.origin == Some(origin));
@@ -94,10 +93,10 @@ pub fn show(
                 border: theme::BORDER,
             },
             cx.listener(move |app, event: &ClickEvent, _, cx| {
-                app.ui.menu = Some(
+                app.menu = Some(
                     Menu::choice(event.position(), t("Sort by"), items.clone()).origin(origin),
                 );
-                cx.notify();
+                app.notify_shell(cx);
             }),
         ))
         .child(button::reload(format!("{id}-refresh"), refreshing, reload))

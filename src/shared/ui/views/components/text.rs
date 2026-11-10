@@ -5,8 +5,12 @@ use gpui::{Div, FontFeatures, ParentElement, Rgba, SharedString, Styled, div, re
 use crate::shared::ui::views::design::theme;
 
 /// A single line of body text at the application type scale.
+///
+/// A zero minimum width lets the line shrink inside a flex row and wrap
+/// instead of pushing past the container on a narrow screen.
 pub fn text(value: impl Into<SharedString>, size: f32, color: Rgba) -> Div {
     div()
+        .min_w(theme::unit(0.0))
         .text_size(theme::unit(size))
         .text_color(color)
         .font_family(theme::FAMILY)

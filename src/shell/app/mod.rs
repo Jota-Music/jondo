@@ -3,11 +3,13 @@ mod clock;
 mod drag;
 mod events;
 mod jobs;
+pub(crate) mod motion;
 #[cfg(target_os = "android")]
 pub(crate) mod platform;
 mod render;
 mod route;
 mod setup;
+mod store;
 mod ui;
 
 pub mod clipboard;
@@ -15,6 +17,10 @@ pub mod clipboard;
 #[cfg(test)]
 #[path = "app.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "render.test.rs"]
+mod render_tests;
 
 pub use crate::settings::app::SpotifyState;
 pub use crate::shared::music::app::{Cache, Table};
@@ -34,7 +40,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use gpui::{Entity, Rgba, ScrollHandle, UniformListScrollHandle};
+use gpui::{Context, Entity, Rgba, ScrollHandle, UniformListScrollHandle};
 use gpui_kit::component::input::{InputState, TextareaState};
 
 use crate::music::catalog::Catalog;
@@ -50,9 +56,12 @@ use crate::shell::app::clipboard::Clipboard;
 pub(crate) const IN_MEMORY_PLAYLISTS: usize = 4;
 /// One frame per display refresh while something moves.
 const FRAME: Duration = Duration::from_millis(16);
-/// The playback clock: the disc steps a little under ten times a second, so
-/// painting faster only rebuilds the same frame.
+/// The playback clock while the vinyl is on screen: the disc steps a little
+/// under ten times a second, so painting faster only rebuilds the same frame.
 const CLOCK: Duration = Duration::from_millis(96);
+/// How often loaded covers are looked for while none of them is on screen.
+/// The poll only paints when one actually arrived.
+const COVER: Duration = Duration::from_millis(100);
 /// How long the idle clock sleeps between looks at the app.
 const IDLE: Duration = Duration::from_millis(250);
 const SPIN_PERIOD: f32 = 120.0;
@@ -68,12 +77,16 @@ pub struct Jondo {
     pub(crate) textareas: HashMap<&'static str, Entity<TextareaState>>,
     pub(crate) scrolls: HashMap<String, UniformListScrollHandle>,
     pub(crate) panes: HashMap<String, ScrollHandle>,
+    /// The pane offsets the last tick saw, so a scroll asks for a frame and
+    /// the page can load the covers of the rows it just uncovered.
+    pane_offsets: HashMap<String, f32>,
     pub(crate) subscriptions: Vec<gpui::Subscription>,
     pub(crate) route: Route,
-    pub(crate) route_key: gpui::SharedString,
     pub(crate) history: History,
     pub(crate) store: Store,
     pub(crate) covers: Covers,
+    /// The route page, kept as a view so a moving overlay does not rebuild it.
+    pub(crate) screen: Entity<crate::shell::views::layouts::Screen>,
     pub(crate) player: Entity<Player>,
     pub(crate) preview: crate::music::track::app::Preview,
     pub(crate) jobs: Jobs,
@@ -85,6 +98,13 @@ pub struct Jondo {
     pub(crate) probes: HashSet<String>,
     pub(crate) search: SearchState,
     pub(crate) ui: UiState,
+    /// The open context menu and the frame it started closing on.
+    pub(crate) menu: Option<crate::shell::views::menu::Menu>,
+    pub(crate) menu_closing: Option<(u64, Instant)>,
+    /// The row selection the list pages paint and act on.
+    pub(crate) selection: Vec<String>,
+    pub(crate) anchor: Option<usize>,
+    pub(crate) editor: crate::music::track::app::Editor,
     pub(crate) clipboard: Clipboard,
     pub(crate) rooms: Entity<Rooms>,
     pub(crate) rooms_ui: crate::music::rooms::views::State,
@@ -92,6 +112,9 @@ pub struct Jondo {
     pub(crate) binary: Rgba,
     pub(crate) accent_cover: Option<String>,
     pub(crate) disc_spin: f32,
+    /// Whether the vinyl is on screen, so the clock only runs the disc rate
+    /// when there is a disc to turn.
+    pub(crate) disc_shown: bool,
     disc_at: Instant,
     pin_applied: bool,
     /// Wakes the clock out of its idle sleep when motion starts, so the first
@@ -115,4 +138,43 @@ pub struct Jondo {
     pub(crate) pending_shuffle: Option<String>,
     pub(crate) play_token: u64,
     pub(crate) route_changed_at: Option<Instant>,
+}
+
+impl Jondo {
+    /// Repaints only the route page. A filter, a query or a selection change
+    /// does not need the header, the nav or the bar to be rebuilt.
+    pub(crate) fn paint_page(&self, cx: &mut Context<Self>) {
+        self.screen.update(cx, |_, cx| cx.notify());
+    }
+
+    /// Repaints the shell and keeps the cached page: a menu, a sheet, a toast
+    /// or a hover on the chrome does not change what the route renders.
+    pub(crate) fn notify_shell(&self, cx: &mut Context<Self>) {
+        motion::note();
+        cx.notify();
+    }
+
+    /// Routes every pointer-driven repaint to the narrowest owner. The shell
+    /// installs it once; views never reach for `Window::refresh`, which
+    /// ignores the cached page and rebuilds the whole tree.
+    fn install_painter(&self, cx: &mut Context<Self>) {
+        let app = cx.entity().downgrade();
+        crate::shared::ui::views::components::paint::install(move |scope, cx| {
+            // A hover handler declared with `cx.listener` already borrows the
+            // app. Deferring lands after that borrow is released instead of
+            // asking GPUI to update the same entity twice.
+            let app = app.clone();
+            cx.defer(move |cx| {
+                let _ = app.update(cx, |app, cx| match scope {
+                    crate::shared::ui::views::components::paint::Scope::Page => {
+                        app.paint_page(cx);
+                    }
+                    crate::shared::ui::views::components::paint::Scope::Both => cx.notify(),
+                    crate::shared::ui::views::components::paint::Scope::Shell => {
+                        app.notify_shell(cx);
+                    }
+                });
+            });
+        });
+    }
 }

@@ -5,6 +5,7 @@ use gpui::{
 };
 
 use crate::shared::ui::views::components::hover;
+use crate::shared::ui::views::components::paint::{self, Scope};
 use crate::shared::ui::views::design::icons;
 use crate::shared::ui::views::design::theme;
 use crate::shell::app::Jondo;
@@ -28,9 +29,15 @@ pub(super) fn tab_button(
         .rounded(theme::unit(6.0))
         .cursor_pointer()
         .when(active, |this| this.bg(theme::ZINC_800))
-        .on_hover(move |on: &bool, _, cx| {
-            hover::set(&element, *on, std::time::Instant::now());
-            cx.refresh_windows();
+        .on_hover(move |on: &bool, window, cx| {
+            hover::set_in(
+                Scope::Page,
+                &element,
+                *on,
+                std::time::Instant::now(),
+                window.last_input_was_touch(),
+            );
+            paint::paint(Scope::Page, cx);
         })
         .on_click(cx.listener(move |app, _: &gpui::ClickEvent, _, cx| {
             app.ui.channel_tab = tab.to_owned();

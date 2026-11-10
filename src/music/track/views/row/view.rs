@@ -32,12 +32,11 @@ pub(super) fn commands(
         return (None, Vec::new());
     }
 
-    let selected_now = app.ui.selection.iter().any(|id| id == &song.id);
-    let batch = selected_now && app.ui.selection.len() > 1;
+    let selected_now = app.selection.iter().any(|id| id == &song.id);
+    let batch = selected_now && app.selection.len() > 1;
     let mut targets = vec![song.clone()];
     if batch {
         let chosen: Vec<Song> = app
-            .ui
             .selection
             .iter()
             .filter_map(|id| full.iter().find(|song| &song.id == id).cloned())
@@ -91,7 +90,6 @@ pub(super) fn cell(
     current: bool,
     loading: bool,
     playing: bool,
-    hint: bool,
     accent: gpui::Rgba,
     broken: bool,
     credits_scope: String,
@@ -102,33 +100,10 @@ pub(super) fn cell(
         .flex()
         .items_center()
         .gap(theme::unit(8.0))
-        .child(
-            div()
-                .relative()
-                .child(art)
-                .when(current, |this| {
-                    this.child(cover::outline(2.0, 6.0, accent))
-                        .child(cover::current(loading, playing, 6.0, 25.0, accent))
-                })
-                .when(hint, |this| {
-                    this.child(
-                        div()
-                            .absolute()
-                            .top(theme::unit(1.0))
-                            .left(theme::unit(1.0))
-                            .w(theme::unit(20.0))
-                            .h(theme::unit(20.0))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .rounded_full()
-                            .border_1()
-                            .border_color(theme::ZINC_700)
-                            .bg(theme::alpha(theme::ZINC_900, 0.8))
-                            .child(icons::icon(icons::GRIP_VERTICAL, 13.0, theme::ZINC_300)),
-                    )
-                }),
-        )
+        .child(div().relative().child(art).when(current, |this| {
+            this.child(cover::outline(2.0, 6.0, accent))
+                .child(cover::current(loading, playing, 6.0, 25.0, accent))
+        }))
         .child(
             div()
                 .flex()

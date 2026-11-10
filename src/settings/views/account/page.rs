@@ -23,15 +23,10 @@ pub(crate) fn account(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jon
     let open = app.ui.cookies_open;
     let importing = app.ui.cookies_importing;
     let picking = app
-        .ui
         .menu
         .as_ref()
         .is_some_and(|menu| menu.origin == Some("settings-browser"));
     let error = app.ui.cookies_error.clone();
-
-    if !youtube || !full {
-        app.ensure_browsers(cx);
-    }
 
     let browsers = app.settings.read(cx).browsers.clone();
     let browser = browsers

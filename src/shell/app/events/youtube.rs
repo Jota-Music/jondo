@@ -52,8 +52,8 @@ impl Jondo {
                 }
             }
             Event::YouTubeVideos(query, result) => {
-                if self.ui.editor.open && self.ui.editor.query == query {
-                    self.ui.editor.results.settle(result);
+                if self.editor.open && self.editor.query == query {
+                    self.editor.results.settle(result);
                 }
             }
             Event::YouTubeLink { id, video } => {
