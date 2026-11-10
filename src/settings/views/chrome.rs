@@ -1,4 +1,4 @@
-use crate::shared::ui::views::components::{button, text};
+use crate::shared::ui::views::components::{button, surface, text};
 use crate::shared::ui::views::design::icons::{self, Icon};
 use crate::shared::ui::views::design::theme;
 use crate::shell::app::Jondo;
@@ -36,26 +36,22 @@ pub(super) fn section(
         header = header.child(action);
     }
 
-    div()
-        .rounded(theme::unit(16.0))
-        .border_1()
-        .border_color(theme::ZINC_800)
-        .bg(theme::alpha(theme::ZINC_900, 0.4))
-        .p(theme::unit(16.0))
-        .flex()
-        .flex_col()
-        .gap(theme::unit(16.0))
-        .child(header)
-        .child(body)
-        .into_any_element()
+    surface(
+        16.0,
+        theme::mix(theme::BG, theme::ZINC_900, 0.4),
+        theme::ZINC_800,
+    )
+    .p(theme::unit(16.0))
+    .flex()
+    .flex_col()
+    .gap(theme::unit(16.0))
+    .child(header)
+    .child(body)
+    .into_any_element()
 }
 
 pub(super) fn card(inner: impl IntoElement) -> Div {
-    div()
-        .rounded(theme::unit(12.0))
-        .bg(theme::SURFACE)
-        .border_1()
-        .border_color(theme::ZINC_800)
+    surface(12.0, theme::SURFACE, theme::ZINC_800)
         .p(theme::unit(12.0))
         .child(inner)
 }

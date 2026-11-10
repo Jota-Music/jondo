@@ -13,8 +13,10 @@ pub mod progress;
 pub mod reveal;
 pub mod scroll;
 pub mod select;
+mod surface;
 mod switch;
 pub mod text;
 
 pub use layout::{column, page, panel};
+pub use surface::surface;
 pub use switch::switch;

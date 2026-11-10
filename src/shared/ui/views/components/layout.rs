@@ -2,6 +2,8 @@ use gpui::{Div, IntoElement, ParentElement, Styled, div};
 
 use crate::shared::ui::views::design::theme;
 
+use super::surface;
+
 /// The 672px column the application centers on every screen.
 pub fn page(inner: impl IntoElement) -> Div {
     div().size_full().flex().justify_center().child(
@@ -27,14 +29,10 @@ pub fn column(inner: impl IntoElement) -> Div {
 
 /// The surface a page or panel paints its content on.
 pub fn panel(inner: impl IntoElement) -> Div {
-    div()
+    surface(8.0, theme::SURFACE, theme::BORDER)
         .flex_1()
         .min_h(theme::unit(0.0))
         .w_full()
-        .rounded(theme::unit(8.0))
-        .bg(theme::SURFACE)
-        .border_1()
-        .border_color(theme::BORDER)
         .overflow_hidden()
         .child(inner)
 }

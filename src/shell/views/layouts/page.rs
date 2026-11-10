@@ -50,11 +50,12 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> im
 
     let has_song = app.player.read(cx).current().is_some();
     let compact = app.ui.compact && has_song;
+    // The kit's root already fills the window with the same `theme::BG`, so
+    // painting it again here only costs a full-screen pass on the GPU.
     let mut root = div()
         .relative()
         .flex()
         .flex_col()
-        .bg(theme::BG)
         .on_mouse_up(
             gpui::MouseButton::Left,
             cx.listener(|app, _: &gpui::MouseUpEvent, _window, cx| {
