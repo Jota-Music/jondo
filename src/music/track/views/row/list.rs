@@ -86,7 +86,7 @@ pub fn list(
         .current()
         .is_some_and(|playing| playing.id == song.id);
     let playing = app.player.read(cx).playing;
-    let loading = app.player.read(cx).loading;
+    let loading = app.player.read(cx).busy();
     let accent = app.accent;
     let selected = app.selection.iter().any(|id| id == &song.id);
     let broken = song.broken;

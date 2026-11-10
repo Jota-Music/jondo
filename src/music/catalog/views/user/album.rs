@@ -62,7 +62,8 @@ pub fn show(app: &mut Jondo, cx: &mut Context<Jondo>) -> AnyElement {
             play: Some(Play {
                 enabled: !tracks.is_empty(),
                 playing: in_list && app.player.read(cx).playing,
-                loading: in_list && app.player.read(cx).loading,
+                paused: in_list && app.player.read(cx).paused,
+                loading: in_list && app.player.read(cx).busy(),
                 on_click: Box::new(cx.listener({
                     let tracks = tracks.clone();
                     move |app, _: &gpui::ClickEvent, _, cx| {

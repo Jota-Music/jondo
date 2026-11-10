@@ -247,7 +247,8 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> An
             play: Some(Play {
                 enabled: selected == "tracks" && !tracks.is_empty(),
                 playing: in_list && app.player.read(cx).playing,
-                loading: in_list && app.player.read(cx).loading,
+                paused: in_list && app.player.read(cx).paused,
+                loading: in_list && app.player.read(cx).busy(),
                 on_click: Box::new(cx.listener({
                     let tracks = tracks.clone();
                     move |app, _: &gpui::ClickEvent, _, cx| {

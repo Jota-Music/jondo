@@ -89,7 +89,7 @@ impl Preview {
             }
         }
 
-        if engine.take_ended() {
+        if engine.take_failure().is_some() || engine.take_ended() {
             self.stop(player);
         }
     }
