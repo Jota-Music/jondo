@@ -1,38 +1,113 @@
-# Jondo
+<p align="center">
+  <img src="assets/icon.png" width="120" alt="Jondo">
+</p>
 
-A minimal, native reimplementation of [Jota](https://github.com/Jota-Music/jota) in Rust and GPUI.
+<h1 align="center">Jondo</h1>
 
-Jondo keeps Jota's visual language: stone surfaces, a 672px content column, the same Lucide icons,
-the vinyl disc, cover-derived accent colour, and the responsive compact player. It replaces the
-webview with native rendering and a small streaming audio engine.
+<p align="center">
+  A native Rust rebuild of <a href="https://github.com/Jota-Music/jota">Jota</a> —
+  <em>your music, your rules</em>.
+</p>
+
+> [!WARNING]
+> ## Experimental rebuild. Not Jota, not finished.
+>
+> Jondo is a personal experiment: porting [Jota](https://github.com/Jota-Music/jota)
+> from Go and a webview to Rust and GPUI. It inherits Jota's visual language, its
+> `jota.backup.json` document and its relay rooms, but it is a different codebase
+> with different bugs. Treat it as a workbench, not a product.
+>
+> - **Expect breakage.** Spotify's private endpoints, YouTube's InnerTube client
+>   and browser cookie jars change without notice. A feature that works today can
+>   stop working tomorrow, and nothing here promises otherwise.
+> - **Keep a backup.** `jota.backup.json` holds your playlists, follows, shelf
+>   order and sessions. Copy it somewhere safe before the first run and before
+>   every update.
+> - **Files are rewritten.** The local state and the backup document change as the
+>   code evolves. Writes are atomic and an unreadable state is kept as
+>   `state.bad`, but a format change still means an older build cannot read the
+>   file.
+> - **No support.** No stability guarantees, no SLAs, no migration promises. If you
+>   want the app that is meant to work, use
+>   [Jota](https://github.com/Jota-Music/jota).
+> - **Your accounts, your risk.** Signing in uses your own accounts and cookies.
+>   Automating a service can conflict with its terms and can get an account
+>   limited. Read the [disclaimer](#disclaimer) before using this.
+
+## What this is
+
+Jondo reimplements Jota natively: stone surfaces, a 672px content column, the
+same Lucide icons, the vinyl disc, cover-derived accent colour and the responsive
+compact player, rendered by GPUI instead of a webview, with a small streaming
+audio engine behind it.
+
+The parts that matter for living alongside Jota are inherited on purpose:
+
+- **The same backup document.** `jota.backup.json` keeps Jota's shape — shared
+  `songs`/`albums`/`artists` maps, tombstones, per-record timestamps and its merge
+  rules — so both apps can read and write one folder.
+- **The same sessions.** Jondo stores the account and credential blob Jota keeps,
+  and carries the encrypted YouTube/Spotify sessions through the backup untouched.
+- **The same relay rooms.** It speaks the relay protocol used by
+  [`Jota-Music/relay`](https://github.com/Jota-Music/relay).
 
 ## What works
 
-- **Spotify sign-in** with PKCE and the librespot desktop client id, exchanged at the accesspoint for
-  the reusable credentials Jota stores; no developer app, client secret or OAuth refresh token.
-- **Spotify library** through the same private metadata endpoints Jota uses: rootlist, playlists, tracks.
-- **YouTube search** and **audio playback** through InnerTube. It asks anonymously first and
-  retries signed only when YouTube asks for it, using the session the panel imports from a
-  supported browser (Chromium family and Firefox family jars) or from pasted cookies.
-- **Local playlists**: create, rename, delete and add tracks from search.
-- **Rooms**: join a Jota relay room, share playback controls, save rooms, and configure the
-  relay from Settings.
-- **Backup sync** through the same `jota.backup.json` Jota writes: playlists, follows, saved
-  playlists, shelf order and the relay, with tombstones, per-record timestamps and Jota's merge
-  rules. A folder you already sync on desktop — picked with the system dialog or typed by hand.
-  The settings panel also exports and imports the document by hand, and carries the
-  YouTube/Spotify sessions encrypted under a shared pass.
-- **Settings** with the account pair, the interface language (English and Spanish), Discord rich
-  presence, the relay, backups, logs and the version.
-- **Player**: seek, volume, shuffle, repeat, queue, dominant-colour accent, current-track highlight.
-- **Responsive desktop UI**: full player at wide widths, compact bottom bar and a full-player sheet
-  below 768px.
-- **Low memory**: streams AAC with an eight-second playback buffer and fetches the stream in 512KB
-  chunks as the decoder reaches them, so a track is never downloaded whole; bounded cover texture
-  cache.
+- **Spotify sign-in** with PKCE and the librespot desktop client id, exchanged at
+  the accesspoint for the reusable credentials Jota stores; no developer app,
+  client secret or OAuth refresh token.
+- **Spotify library** through the private metadata endpoints Jota uses: rootlist,
+  playlists, tracks, albums, artists and public playlists.
+- **YouTube search and playback** through InnerTube: anonymous first, signed only
+  when YouTube asks for it, using the session imported from a supported browser
+  (Chromium and Firefox families) or pasted cookies.
+- **Local playlists**: create, rename, delete, add tracks from search, drag to
+  reorder.
+- **Rooms**: join a relay room, share queue and transport, save rooms, configure
+  the relay from Settings.
+- **Backup sync**: autosave to a folder, direct reads on desktop, SAF on Android,
+  manual export/import, encrypted sessions under a shared pass.
+- **Settings**: accounts, language (English and Spanish), Discord rich presence,
+  relay, backups, logs, About with update check.
+- **Player**: seek, volume, shuffle, repeat, queue, dominant-colour accent,
+  current-track highlight, resume after a restart.
+- **Responsive UI**: full player at wide widths; compact bottom bar and a
+  full-player sheet below 768px.
+- **Low memory**: AAC streamed with an eight-second buffer and 512KB chunks, so a
+  track is never downloaded whole; bounded cover texture cache and a capped
+  on-disk cover folder.
 
-Spotify playback is deliberately not implemented. Spotify supplies metadata; audio always comes from
-YouTube.
+**Spotify playback is deliberately not implemented.** Spotify supplies metadata;
+the audio always comes from YouTube.
+
+## What is not here
+
+Everything not listed above, and specifically:
+
+- Spotify audio. Do not expect it, now or later.
+- Jota's Wails/TypeScript code, its auto-updater channels and its release
+  packaging. Jondo has its own updater and its own artifacts.
+- Parity with every Jota screen. The port is broad but unfinished; edges differ.
+
+## Assets inherited from Jota
+
+<p align="center">
+  <img src="assets/banner.png" alt="The original Jota — the interface and brand this rebuild inherits">
+</p>
+
+The icon, the banner and the visual design come from the original Jota (GPL-3.0).
+The screenshots below are **the original app**, not this rebuild: they are here to
+show the interface Jondo reproduces.
+
+<p align="center">
+  <img src="assets/screenshot-home.png" width="640" alt="Home — saved playlists from Spotify and YouTube (original Jota)">
+</p>
+<p align="center">
+  <img src="assets/screenshot-search.png" width="640" alt="Search across Spotify and YouTube (original Jota)">
+</p>
+<p align="center">
+  <img src="assets/screenshot-rooms.png" width="640" alt="Rooms — sync queue and play/pause across devices (original Jota)">
+</p>
 
 ## Build
 
@@ -40,7 +115,8 @@ YouTube.
 cargo run --release
 ```
 
-Linux needs ALSA, Vulkan and the usual GPUI development packages:
+Rust 1.88 or newer (the code uses let chains). Linux needs ALSA, Vulkan and the
+usual GPUI development packages:
 
 ```bash
 # Debian/Ubuntu
@@ -48,95 +124,85 @@ sudo apt install libasound2-dev libxkbcommon-dev libwayland-dev libx11-dev \
   libfontconfig-dev libfreetype-dev libvulkan-dev
 ```
 
-Rust 1.88 or newer (the code uses let chains).
-
 For the edit/run loop:
 
 ```bash
 cargo dev
 ```
 
-That is an alias for `cargo watch --no-vcs-ignores -w src -w assets -w Cargo.toml -x run`, defined in
-`.cargo/config.toml`, and needs `cargo install cargo-watch` once. The flags are not optional: this
-crate lives inside a large git repo, and plain `cargo watch` spends minutes walking it (every
-`node_modules` and `.pnpm-store`) to discover `.gitignore` files before it runs anything. Watch the
-crate's own files explicitly and skip that discovery.
+That is an alias for `cargo watch --no-vcs-ignores -w src -w assets -w Cargo.toml -x run`,
+defined in `.cargo/config.toml`, and needs `cargo install cargo-watch` once. The
+flags are not optional: this crate lives inside a large git repo, and plain
+`cargo watch` spends minutes walking it (every `node_modules` and `.pnpm-store`)
+to discover `.gitignore` files before it runs anything.
+
+Tests and lints match CI:
+
+```bash
+cargo fmt --all --check
+cargo clippy --all-targets -- -D warnings
+cargo test --all-targets
+```
 
 ## Platforms
 
-GPUI renders through Vulkan and ships no Android backend, so this build targets desktop Linux,
-macOS and Windows. The previous egui Android activity is not part of the GPUI build.
+| Platform | Status |
+|---|---|
+| Linux | Primary target; the release publishes an `.AppImage`. |
+| Android | Built from `android/` (a GPUI mobile activity) and published as `jondo.apk`. |
+| macOS | Builds from source. |
+| Windows | Builds from source. |
 
-## Migration status
-
-The GPUI port covers the shell, header and search panel, shelf, playlist page, YouTube search,
-player and queue, create/rename/delete sheets, settings, following, artist/album/channel/profile
-pages, the YouTube audio editor and saved rooms.
-
-Interactions match the original: drag-to-reorder (shelf, playlist, queue and rooms), the rotating
-vinyl, 150ms hover easing on buttons and rows, sheet/search/route/toast/cover transitions,
-multi-select with its action bar, artist tabs and always-on-top pinning through X11.
-
-Every song list is virtualized (`uniform_list` with a persistent scroll handle and the 15px
-scrollbar gutter); the shelf, the following page and the rooms page scroll their tiles whole, and
-each page rebuilds its row set only when the list, the query or the order changes. The rooms shelf
-shows each saved room's relay status: live member count, connecting spinner, offline power icon, the
-password lock and the amber warning when the host left.
-The YouTube editor previews the picked video with play/pause, stop and a progress bar before saving.
-
-## Backup
-
-The library travels in `jota.backup.json`, the document Jota autosaves: `playlists` (with the shared
-`songs`/`albums`/`artists` maps), `follows`, `saved`, `order`, `settings` and `sessions`. Jondo
-writes the same bytes Jota writes, so both apps can share one folder.
-
-- Desktop reads the folder directly and settles with a `stat` while nothing changed.
-- Android picks the document with SAF (a folder through the tree picker, a cloud file one document
-  at a time). The provider's copy is staged as `filesDir/sync/incoming.json`, merged here, and
-  written back from `filesDir/sync/outgoing.json` with a truncating stream.
-- A provider that serves a cached copy is not written over: the pass marks itself stale, reads once
-  more and writes the union. The write baseline only moves once the commit confirmed the bytes, so a
-  failed write is retried instead of being believed.
-- `sessions` (the encrypted YouTube cookies and Spotify credentials) is carried through untouched:
-  Jondo does not stage them, so a document written by Jota keeps them.
+The release pipeline publishes `jondo.apk`, `jondo-x86_64.AppImage` and a
+`SHA256SUMS` next to them; the updater verifies the checksum before installing.
 
 ## Data
 
-Environment variables: `DISCORD_CLIENT_ID` overrides the Discord application used for rich
-presence (Jota's by default), and `JONDO_REPO` (`owner/name`) enables the release check in About —
-without it the panel only links to the repository.
+Environment variables: `DISCORD_CLIENT_ID` overrides the Discord application used
+for rich presence (Jota's by default), `JONDO_HOME` pins the state folder (a
+portable install), and `JONDO_REPO` (`owner/name`) enables the release check in
+About — without it the panel only links to the repository.
 
-State lives in `~/.config/jondo/state.json` with mode `0600`. Next to it, `playlists/` holds the
-cached track lists (so entering a playlist already seen is instant), `covers/` the cover thumbnails
-and `library.json` the last Spotify library, so the shelf paints before the network answers. The
-backup document itself lives in the folder you choose. `state.json` contains local playlists, the queue,
-volume, the Spotify session (the same account and credential blob Jota keeps), and the saved relay and
-rooms. Delete it to reset the app. A file that cannot be read is kept as `state.bad` instead of being
-overwritten, so a bad byte never costs the queue, the local playlists or the session. The file groups
-its sections — `youtube`, `spotify`, `sync`, `relay`, `rooms`, and the `order`/`follows`/`saved` lists
-with their `at`.
+State lives in `~/.config/jondo/state.json` with mode `0600`. Next to it:
 
-## Release
+- `playlists/` caches track lists, so entering a playlist already seen is instant.
+- `covers/` holds cover thumbnails; the folder is capped and trimmed.
+- `library.json` holds the last Spotify library, so the shelf paints before the
+  network answers.
 
-- Android: `./android/build.sh --release` builds both ABIs and packages a signed APK. Set
-  `ANDROID_KEYSTORE_FILE`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and
-  `ANDROID_KEY_PASSWORD`, or add a gitignored `android/keystore.properties`. The release build
-  refuses to run without them.
-- Name the artifacts `jondo.apk` and `jondo-<arch>.AppImage`, and publish a `SHA256SUMS` next to
-  them: the updater verifies the checksum before installing.
-- Build with `JONDO_REPO=Jota-Music/jondo` so the release check points at this repository.
-- CI: `.github/workflows/ci.yml` checks format, clippy, tests and the Android build. Pushing a
-  `vX.Y.Z` tag runs `.github/workflows/release.yml` and publishes `jondo.apk`,
-  `jondo-x86_64.AppImage` and `SHA256SUMS`.
-- GitHub secrets for the Android release: `ANDROID_KEYSTORE_BASE64`,
-  `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`.
+`state.json` keeps local playlists, the queue, volume, the Spotify session and the
+saved relay and rooms, grouped into sections (`youtube`, `spotify`, `sync`,
+`relay`, `rooms`, and the `order`/`follows`/`saved` lists with their `at`). Values
+equal to their default are not written. Delete it to reset the app; a file that
+cannot be read is kept as `state.bad` instead of being overwritten.
 
-## Layout
+## Backup and sync
 
-The tree is feature-first: each business concept owns its layers, so a slice can be read
-top to bottom without jumping across the crate. The dependency direction is `views → app →
-domain`: `domain` holds the types, `app` the use cases and `views` the outermost consumers.
-`domain` never depends on gpui, tokio or an adapter.
+The library travels in `jota.backup.json`, the document Jota autosaves:
+`playlists` (with the shared `songs`/`albums`/`artists` maps), `follows`, `saved`,
+`order`, `settings` and `sessions`.
+
+- Desktop reads the folder directly and settles with a `stat` while nothing
+  changed.
+- Android picks the document with SAF (a folder through the tree picker, a cloud
+  file one document at a time). The provider's copy is staged as
+  `filesDir/sync/incoming.json`, merged here, and written back from
+  `filesDir/sync/outgoing.json` with a truncating stream.
+- A provider that serves a cached copy is not written over: the pass marks itself
+  stale, reads once more and writes the union. The write baseline only moves once
+  the commit confirmed the bytes, so a failed write is retried instead of being
+  believed.
+- Every pass runs off the UI thread; only the ones you asked for report a status.
+- `sessions` (the encrypted YouTube cookies and Spotify credentials) is carried
+  through untouched: Jondo does not stage them, so a document written by Jota
+  keeps them.
+
+## Project layout
+
+The tree is feature-first: each business concept owns its layers, so a slice can be
+read top to bottom without jumping across the crate. The dependency direction is
+`views → app → domain`: `domain` holds the types, `app` the use cases and `views`
+the outermost consumers. `domain` never depends on gpui, tokio or an adapter.
 
 ```
 src/
@@ -187,12 +253,57 @@ src/
     views/                chrome, layouts, header, menu, sheet, page and toolbar
 ```
 
+## Release
+
+- Android: `./android/build.sh --release` builds both ABIs and packages a signed
+  APK. Set `ANDROID_KEYSTORE_FILE`, `ANDROID_KEYSTORE_PASSWORD`,
+  `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`, or add a gitignored
+  `android/keystore.properties`. The release build refuses to run without them.
+- CI (`.github/workflows/ci.yml`) checks format, clippy, tests and the Android
+  build. Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml` and publishes
+  `jondo.apk`, `jondo-x86_64.AppImage` and `SHA256SUMS`.
+- Build with `JONDO_REPO=Jota-Music/jondo` so the release check points at this
+  repository.
+- GitHub secrets for the Android release: `ANDROID_KEYSTORE_BASE64`,
+  `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`.
+
 ## Credits
 
-- UI, assets and interaction model derived from [Jota](https://github.com/Jota-Music/jota) (GPL-3.0).
-- Icons from [Lucide](https://lucide.dev) (ISC), rendered from the exact SVG sources.
-- Spotify metadata through Spotify's private spclient, using the subset Jota and go-librespot rely on.
+- [Jota](https://github.com/Jota-Music/jota) by
+  [salvadorsru](https://github.com/salvadorsru) — the app, its design, its assets,
+  its backup format and its relay protocol. Jondo is a rebuild of that work under
+  the same licence.
+- Icons from [Lucide](https://lucide.dev) (ISC), rendered from the exact SVG
+  sources.
+- Inter, bundled under the SIL Open Font Licence (`assets/fonts/OFL.txt`).
+- Spotify metadata through Spotify's private spclient, using the subset Jota and
+  go-librespot rely on.
+
+## Disclaimer
+
+Jondo is an independent, unofficial client and an experiment. It is not
+affiliated with, endorsed or sponsored by Spotify AB, Google LLC or any music
+label; "Spotify" and "YouTube" are used only to describe interoperability and
+remain the property of their owners. It is not the official Jota and does not
+speak for it: the original project is the supported one.
+
+It signs into Spotify through the platform's OAuth flow, reads metadata over its
+private Connect protocol and plays audio through YouTube's undocumented client
+API. It does not bypass Spotify's access controls or play its audio streams, and it
+never stores, redistributes or monetizes content: everything is fetched at runtime
+from your own session, and streamed audio belongs to its rights holders.
+
+This is a rebuild in progress, built for personal use and shared as-is. It may
+stop working, lose data or break your setup at any time; there is no warranty of
+any kind, express or implied. By using it you are responsible for complying with
+the terms of service and the laws that apply to the platforms you reach through
+it. Spotify and Google may restrict, modify or revoke access at any time.
+
+If you want the maintained application, use
+[Jota](https://github.com/Jota-Music/jota).
 
 ## Licence
 
-GPL-3.0-only. See `LICENSE`.
+GPL-3.0-only. See [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE). As a derivative
+work it keeps Jota's licence, and the assets inherited from Jota stay under
+GPL-3.0.
