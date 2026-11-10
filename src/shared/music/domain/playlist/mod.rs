@@ -2,28 +2,37 @@ use serde::{Deserialize, Serialize};
 
 use super::{Song, Source};
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Playlist {
     pub id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub name: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subtitle: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cover: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub covers: Vec<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_local")]
     pub source: Source,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner_id: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub songs: Vec<Song>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_zero")]
     pub track_count: u32,
     #[serde(skip)]
     pub loading: bool,
+}
+
+fn is_zero(value: &u32) -> bool {
+    *value == 0
+}
+
+fn is_local(source: &Source) -> bool {
+    *source == Source::Local
 }
 
 impl Playlist {

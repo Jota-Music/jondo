@@ -13,18 +13,22 @@ pub enum FollowKind {
 
 /// One follow, stored under the key Jota writes into its backup: `artist:<id>`,
 /// `youtube:<channel>` and a bare handle for a Spotify user.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Follow {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub id: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub name: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_artist")]
     pub kind: FollowKind,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<Source>,
+}
+
+fn is_artist(kind: &FollowKind) -> bool {
+    *kind == FollowKind::Artist
 }
 
 impl Follow {

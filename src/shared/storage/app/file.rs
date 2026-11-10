@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::sync::{Condvar, Mutex, OnceLock};
+use std::sync::{Condvar, Mutex, OnceLock, PoisonError};
 
 use crate::shared::storage::domain::*;
 
@@ -34,7 +34,7 @@ pub(super) fn writer() -> &'static Slot {
         ready: Condvar::new(),
     });
     WRITER_STARTED.get_or_init(|| {
-        std::thread::Builder::new()
+        let spawned = std::thread::Builder::new()
             .name("jondo-store".to_owned())
             .spawn(move || {
                 loop {
@@ -44,16 +44,21 @@ pub(super) fn writer() -> &'static Slot {
 
                     store.write();
                 }
-            })
-            .ok();
+            });
+        if let Err(error) = spawned {
+            log::warn!("cannot start the store writer: {error}");
+        }
     });
     slot
 }
 
 pub(super) fn take(slot: &'static Slot) -> Option<Store> {
-    let mut waiting = slot.store.lock().ok()?;
+    let mut waiting = slot.store.lock().unwrap_or_else(PoisonError::into_inner);
     while waiting.is_none() {
-        waiting = slot.ready.wait(waiting).ok()?;
+        waiting = slot
+            .ready
+            .wait(waiting)
+            .unwrap_or_else(PoisonError::into_inner);
     }
 
     waiting.take()

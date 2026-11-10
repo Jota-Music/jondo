@@ -9,32 +9,47 @@ pub enum Source {
     Local,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+/// Only the fields a track actually holds are written: a stored song stays a
+/// short row instead of a page of defaults.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Song {
     pub id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub name: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub artists: Vec<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub album: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub album_id: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub playlist_id: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub artist_ids: Vec<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cover: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_zero")]
     pub duration: u32,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_local")]
     pub source: Source,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub video_id: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub uri: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_false")]
     pub broken: bool,
+}
+
+fn is_zero(value: &u32) -> bool {
+    *value == 0
+}
+
+fn is_local(source: &Source) -> bool {
+    *source == Source::Local
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 impl Song {

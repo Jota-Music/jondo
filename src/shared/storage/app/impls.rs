@@ -1,6 +1,7 @@
 use std::fs;
 use std::io::Write;
-use std::sync::Mutex;
+use std::path::Path;
+use std::sync::{Mutex, PoisonError};
 
 use crate::shared::music::domain::Room;
 use crate::shared::music::domain::Song;
@@ -18,20 +19,42 @@ static WRITING: Mutex<()> = Mutex::new(());
 
 impl Store {
     pub fn load() -> Self {
-        let Some(path) = path() else {
+        match path() {
+            Some(path) => Self::load_from(&path),
+            None => Self::default(),
+        }
+    }
+
+    /// An unreadable store is moved aside instead of being replaced by the
+    /// defaults the next save writes on top, so one bad byte never costs the
+    /// queue, the local playlists or the session.
+    pub(super) fn load_from(path: &Path) -> Self {
+        let Ok(text) = fs::read_to_string(path) else {
             return Self::default();
         };
 
-        match fs::read_to_string(&path) {
-            Ok(text) => {
-                let mut store: Self = serde_json::from_str(&text).unwrap_or_else(|error| {
-                    log::warn!("cannot read {}: {error}", path.display());
-                    Self::default()
-                });
+        match serde_json::from_str::<Snapshot>(&text) {
+            Ok(snapshot) => {
+                let mut store = Self::from(snapshot);
                 store.normalize();
                 store
             }
-            Err(_) => Self::default(),
+            Err(error) => {
+                let kept = path.with_extension("bad");
+                match fs::rename(path, &kept) {
+                    Ok(()) => log::warn!(
+                        "cannot read {}: {error}; kept as {}",
+                        path.display(),
+                        kept.display()
+                    ),
+                    Err(failure) => log::warn!(
+                        "cannot read {}: {error}; cannot keep it: {failure}",
+                        path.display()
+                    ),
+                }
+
+                Self::default()
+            }
         }
     }
 
@@ -127,12 +150,9 @@ impl Store {
     /// waiting. A frame never waits for a disk flush.
     pub fn save(&self) {
         let slot = writer();
-        if let Ok(mut waiting) = slot.store.lock() {
-            *waiting = Some(self.clone());
-            slot.ready.notify_one();
-        } else {
-            self.write();
-        }
+        let mut waiting = slot.store.lock().unwrap_or_else(PoisonError::into_inner);
+        *waiting = Some(self.clone());
+        slot.ready.notify_one();
     }
 
     /// Writes now, for the paths that end the process.
@@ -145,9 +165,7 @@ impl Store {
             return;
         };
 
-        let Ok(_writing) = WRITING.lock() else {
-            return;
-        };
+        let _writing = WRITING.lock().unwrap_or_else(PoisonError::into_inner);
 
         if let Some(parent) = path.parent()
             && let Err(error) = fs::create_dir_all(parent)
@@ -156,26 +174,25 @@ impl Store {
             return;
         }
 
-        let Ok(text) = serde_json::to_string(self) else {
-            return;
-        };
-
         let temp = path.with_extension("tmp");
         let write = || -> std::io::Result<()> {
-            let mut file = fs::File::create(&temp)?;
-            file.write_all(text.as_bytes())?;
-            file.sync_all()?;
-            fs::rename(&temp, &path)?;
+            let file = fs::File::create(&temp)?;
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
-                fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
+                file.set_permissions(fs::Permissions::from_mode(0o600))?;
             }
 
-            Ok(())
+            let mut writer = std::io::BufWriter::new(file);
+            serde_json::to_writer(&mut writer, &Snapshot::from(self))
+                .map_err(std::io::Error::other)?;
+            writer.flush()?;
+            writer.get_ref().sync_all()?;
+            fs::rename(&temp, &path)
         };
 
         if let Err(error) = write() {
+            let _ = fs::remove_file(&temp);
             log::warn!("cannot save {}: {error}", path.display());
         }
     }

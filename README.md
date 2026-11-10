@@ -111,7 +111,10 @@ cached track lists (so entering a playlist already seen is instant), `covers/` t
 and `library.json` the last Spotify library, so the shelf paints before the network answers. The
 backup document itself lives in the folder you choose. `state.json` contains local playlists, the queue,
 volume, the Spotify session (the same account and credential blob Jota keeps), and the saved relay and
-rooms. Delete it to reset the app.
+rooms. Delete it to reset the app. A file that cannot be read is kept as `state.bad` instead of being
+overwritten, so a bad byte never costs the queue, the local playlists or the session. The file groups
+its sections — `youtube`, `spotify`, `sync`, `relay`, `rooms`, and the `order`/`follows`/`saved` lists
+with their `at`.
 
 ## Release
 
