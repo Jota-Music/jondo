@@ -64,7 +64,7 @@ type Stream = std::fs::File;
 
 #[cfg(any(unix, windows))]
 fn work(client: &str, receiver: std::sync::mpsc::Receiver<Option<Activity>>) {
-    let mut conn: Option<Stream> = None;
+    let mut conn = None;
     while let Ok(activity) = receiver.recv() {
         if conn.is_none() {
             conn = connect(client);

@@ -37,7 +37,7 @@ impl Jondo {
             self.ui.following_filter, self.ui.library_revision
         );
         if self.ui.following_page.key.as_deref() != Some(key.as_str()) {
-            let items: Vec<Follow> = self
+            let items = self
                 .follows(cx)
                 .iter()
                 .filter(|follow| match self.ui.following_filter {
@@ -203,7 +203,7 @@ impl Jondo {
             .chain(library.youtube.iter())
             .map(|playlist| playlist.id.as_str())
             .collect();
-        let mut items: Vec<Playlist> = library.spotify.to_vec();
+        let mut items = library.spotify.to_vec();
         items.extend(library.youtube.iter().cloned());
 
         items.extend(

@@ -51,7 +51,7 @@ fn skeleton(app: &mut Jondo, window: &Window, username: &str) -> AnyElement {
         );
     let cell = grid::cell(window);
     let art = cell - 12.0;
-    let tiles: Vec<AnyElement> = (0..6)
+    let tiles = (0..6)
         .map(|_| {
             div()
                 .w(theme::unit(cell))

@@ -63,7 +63,7 @@ pub fn reorderable(local: bool, all: &[Song], ids: &[String]) -> bool {
 /// Indices of the songs a playlist page shows, in the requested order.
 pub fn visible(all: &[Song], query: &str, order: Order, searchable: bool) -> Vec<usize> {
     let query = query.trim().to_lowercase();
-    let mut rows: Vec<usize> = all
+    let mut rows = all
         .iter()
         .enumerate()
         .filter(|(_, song)| {

@@ -254,7 +254,7 @@ impl Youtube {
         let mut owner = String::new();
         let mut owner_id = None;
         let mut cover = None;
-        let mut continuation: Option<String> = None;
+        let mut continuation = None;
         let mut previous = None;
 
         let signed = self.signed_in();

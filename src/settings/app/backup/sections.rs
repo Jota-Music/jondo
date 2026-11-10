@@ -9,7 +9,6 @@ use std::collections::BTreeMap;
 
 use serde_json::{Value, json};
 
-use crate::shared::music::domain::Playlist;
 use crate::shared::storage::Store;
 
 use super::{document::*, sync::*};
@@ -172,7 +171,7 @@ pub(super) fn saved(document: &mut Document, store: &mut Store, mode: Mode, appl
             .iter()
             .map(|playlist| playlist.id.as_str())
             .collect();
-        let mut next: Vec<Playlist> = Vec::with_capacity(items.len());
+        let mut next = Vec::with_capacity(items.len());
         let mut times = BTreeMap::new();
         for entry in items.values() {
             let mut playlist = store

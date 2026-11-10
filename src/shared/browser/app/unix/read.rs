@@ -18,7 +18,7 @@ pub(super) fn header(jar: &Jar) -> Result<String, String> {
         secrets(jar.name)
     };
 
-    let mut order: Vec<String> = Vec::new();
+    let mut order = Vec::new();
     let mut picked: Vec<(String, String, u8)> = Vec::new();
     let mut locked = false;
     for row in rows {

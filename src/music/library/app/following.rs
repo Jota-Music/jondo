@@ -53,7 +53,7 @@ impl Jondo {
     }
 
     pub fn following_all(&self, cx: &gpui::App) -> Vec<Follow> {
-        let mut entries: Vec<Follow> = Vec::new();
+        let mut entries = Vec::new();
         let mut seen = HashSet::new();
         let mut add = |follow: Follow| {
             if follow.id.is_empty() || !seen.insert(follow.id.to_lowercase()) {

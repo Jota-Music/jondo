@@ -89,7 +89,7 @@ pub fn bar(app: &mut Jondo, cx: &mut Context<Jondo>) -> AnyElement {
                     "selection-actions",
                     28.0,
                     move |app, cx| {
-                        let ids: Vec<String> = targets.iter().map(|song| song.id.clone()).collect();
+                        let ids = targets.iter().map(|song| song.id.clone()).collect();
                         let remove = playlist.clone().map(|id| Command::Remove(id, ids));
                         let items = actions::track(
                             app,

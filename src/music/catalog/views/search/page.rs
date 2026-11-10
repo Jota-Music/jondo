@@ -43,7 +43,7 @@ pub fn show(app: &mut Jondo, cx: &mut Context<Jondo>) -> AnyElement {
             theme::Weight::SemiBold,
         ));
 
-    let body: AnyElement = if app.catalog.read(cx).search.loading {
+    let body = if app.catalog.read(cx).search.loading {
         div()
             .py(theme::unit(24.0))
             .child(loading::spinner())

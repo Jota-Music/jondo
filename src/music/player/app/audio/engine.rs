@@ -194,7 +194,7 @@ pub(super) fn build_stream(
     format: cpal::SampleFormat,
     shared: Arc<Shared>,
 ) -> Result<cpal::Stream, String> {
-    let stream_config: cpal::StreamConfig = (*config).into();
+    let stream_config = (*config).into();
     let channels = config.channels() as usize;
     let error_shared = shared.clone();
     let on_error = move |error| {

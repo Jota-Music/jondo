@@ -17,7 +17,7 @@ pub(super) fn tab_button(
     active: bool,
     tab: &'static str,
 ) -> impl IntoElement {
-    let element: gpui::ElementId = id.into();
+    let element = id.into();
     let fade = hover::value(&element, std::time::Instant::now());
     div()
         .id(element.clone())

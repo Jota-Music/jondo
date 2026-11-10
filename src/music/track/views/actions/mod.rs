@@ -418,7 +418,7 @@ pub fn trigger_in<F>(
 where
     F: Fn(&mut Jondo, &App) -> (Option<SharedString>, Vec<Item>) + 'static,
 {
-    let id: ElementId = id.into();
+    let id = id.into();
     let fade = hover::value(&id, std::time::Instant::now());
     div()
         .id(id.clone())

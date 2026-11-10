@@ -37,13 +37,13 @@ pub fn call(
 
     let class = resolve(&mut env, &activity, class)?;
 
-    let strings: Vec<JString> = args
+    let strings = args
         .iter()
         .map(|value| env.new_string(value))
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())?;
 
-    let mut values: Vec<JValue> = Vec::with_capacity(strings.len() + 1);
+    let mut values = Vec::with_capacity(strings.len() + 1);
     values.push(JValue::Object(&activity));
     for value in &strings {
         values.push(JValue::Object(value));
@@ -61,7 +61,7 @@ pub fn call(
         return Ok(None);
     }
 
-    let text: String = env
+    let text = env
         .get_string(&JString::from(object))
         .map_err(|error| error.to_string())?
         .into();

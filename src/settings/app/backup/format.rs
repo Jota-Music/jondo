@@ -31,7 +31,7 @@ pub(crate) fn stored_id(id: &str) -> String {
 }
 
 pub(crate) fn fnv1a64(text: &str) -> u64 {
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut hash = 0xcbf2_9ce4_8422_2325;
     for byte in text.as_bytes() {
         hash ^= u64::from(*byte);
         hash = hash.wrapping_mul(0x0000_0100_0000_01b3);

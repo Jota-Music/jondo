@@ -1,6 +1,4 @@
-use gpui::{
-    AnyElement, Context, IntoElement, ParentElement, Render, Styled, WeakEntity, Window, div,
-};
+use gpui::{Context, IntoElement, ParentElement, Render, Styled, WeakEntity, Window, div};
 
 use crate::shell::app::Jondo;
 
@@ -31,7 +29,7 @@ impl Render for Screen {
             // sheet or a menu moves over it.
             app.covers.begin_frame();
             app.covers.prune();
-            let page: AnyElement = page::route(app, window, cx);
+            let page = page::route(app, window, cx);
             div().size_full().child(page).into_any_element()
         })
     }

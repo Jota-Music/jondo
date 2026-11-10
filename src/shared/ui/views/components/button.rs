@@ -60,7 +60,7 @@ pub fn icon_button_in(
     let base = theme::alpha(theme::ZINC_800, 0.0);
     let lit = theme::alpha(theme::ZINC_800, 0.8);
     let label = icon.label();
-    let named: SharedString = label.to_owned().into();
+    let named = label.to_owned().into();
     actionable(
         hover::hover_in(
             scope,
@@ -195,7 +195,7 @@ pub fn icon_flat_in(
     on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
     let label = icon.label();
-    let named: SharedString = label.to_owned().into();
+    let named = label.to_owned().into();
     actionable(
         hover::hover_in(
             scope,
@@ -261,7 +261,7 @@ pub fn circle_in(
     on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
     let label = icon.label();
-    let named: SharedString = label.to_owned().into();
+    let named = label.to_owned().into();
     actionable(
         hover::hover_in(
             scope,

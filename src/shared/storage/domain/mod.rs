@@ -22,7 +22,7 @@ pub struct LocalPlaylist {
 
 impl LocalPlaylist {
     pub fn covers(&self) -> Vec<String> {
-        let mut covers: Vec<String> = Vec::with_capacity(4);
+        let mut covers = Vec::with_capacity(4);
         for cover in self.songs.iter().filter_map(|song| song.cover.as_deref()) {
             if covers.iter().any(|seen| seen == cover) {
                 continue;

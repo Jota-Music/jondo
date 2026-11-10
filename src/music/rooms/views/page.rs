@@ -185,7 +185,7 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> An
     } else {
         let cell = grid::cell(window);
         let scroll = app.pane("rooms");
-        let tiles: Vec<AnyElement> = items
+        let tiles = items
             .iter()
             .map(|room| tile(app, cx, room, cell).into_any_element())
             .collect();

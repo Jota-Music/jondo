@@ -36,7 +36,7 @@ pub fn install() {
 pub fn sync(app: &mut Jondo, cx: &mut gpui::Context<Jondo>) {
     apply(app);
 
-    let actions: Vec<MediaAction> = match ACTIONS.lock() {
+    let actions = match ACTIONS.lock() {
         Ok(mut queue) => queue.drain(..).collect(),
         Err(_) => Vec::new(),
     };

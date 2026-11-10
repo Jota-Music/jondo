@@ -115,7 +115,7 @@ pub fn touch(store: &mut Store) {
 
 /// FNV-1a 32, the fingerprint Jota uses for the document it wrote.
 pub fn stamp(text: &str) -> u32 {
-    let mut hash: u32 = 0x811c_9dc5;
+    let mut hash = 0x811c_9dc5;
     for byte in text.as_bytes() {
         hash ^= u32::from(*byte);
         hash = hash.wrapping_mul(0x0100_0193);

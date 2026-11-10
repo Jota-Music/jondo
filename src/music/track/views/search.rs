@@ -249,14 +249,14 @@ fn channels_content(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo
     let channels = app.search.channels.list().to_vec();
     let scroll = app.pane("search-channels");
     if app.search.list {
-        let rows: Vec<AnyElement> = channels
+        let rows = channels
             .iter()
             .map(|channel| channel_row(app, cx, channel).into_any_element())
             .collect();
         grid::list("search-channels", &scroll, rows)
     } else {
         let cell = grid::cell(window);
-        let tiles: Vec<AnyElement> = channels
+        let tiles = channels
             .iter()
             .map(|channel| channel_tile(app, cx, channel, cell).into_any_element())
             .collect();

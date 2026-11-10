@@ -161,7 +161,7 @@ pub(super) async fn context_pages(
             return Err(format!("spotify context answered {status}"));
         }
 
-        let value: serde_json::Value = response
+        let value = response
             .json()
             .await
             .map_err(|error| format!("spotify context: {error}"))?;

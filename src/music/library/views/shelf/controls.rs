@@ -143,7 +143,7 @@ pub(super) fn segment_text(
     height: f32,
     on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
-    let element: gpui::ElementId = id.into();
+    let element = id.into();
     let fade = hover::value(&element, std::time::Instant::now());
     div()
         .id(element.clone())
@@ -188,7 +188,7 @@ pub(super) fn segment(
     on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
     let is_brand = matches!(icon, icons::Icon::YouTube | icons::Icon::Spotify);
-    let element: gpui::ElementId = id.into();
+    let element = id.into();
     let fade = hover::value(&element, std::time::Instant::now());
     let color = if active {
         theme::rgb(0xffffff)
