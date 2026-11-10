@@ -9,7 +9,8 @@ use gpui::{
 
 use crate::shared::music::domain::Song;
 use crate::shared::music::views::cover;
-use crate::shared::ui::views::components::{hover, text};
+use crate::shared::ui::views::components::paint::Scope;
+use crate::shared::ui::views::components::{hold, hover, text};
 use crate::shared::ui::views::design::theme;
 use crate::shared::ui::views::reorder;
 use crate::shell::app::{Jondo, Reorder};
@@ -87,7 +88,7 @@ pub fn list(
     let playing = app.player.read(cx).playing;
     let loading = app.player.read(cx).loading;
     let accent = app.accent;
-    let selected = app.ui.selection.iter().any(|id| id == &song.id);
+    let selected = app.selection.iter().any(|id| id == &song.id);
     let broken = song.broken;
     let row_id = gpui::ElementId::Name(
         format!("song-row-{}-{index}", playlist.unwrap_or("collection")).into(),
@@ -116,12 +117,10 @@ pub fn list(
     let lifted = reorder && app.ui.drag_from == Some(index);
     let dropping =
         reorder && app.ui.drag_from.is_some() && !lifted && app.ui.drag_to == Some(index);
-    // A finger has no hover to reveal the grip, so touch platforms keep it on.
-    let hint = reorder && !dragging && (cfg!(target_os = "android") || fade > 0.0);
 
     let press = cx.listener(
         move |app: &mut Jondo, event: &gpui::MouseDownEvent, _, cx| {
-            if reorder && app.ui.selection.is_empty() {
+            if reorder && app.selection.is_empty() {
                 app.ui.pressed_song = Some((index, event.position));
             }
 
@@ -149,7 +148,7 @@ pub fn list(
                     return;
                 }
 
-                hover::set(&row, false, std::time::Instant::now());
+                hover::set_in(Scope::Page, &row, false, std::time::Instant::now(), false);
                 app.ui.reorder = Some(Reorder::Playlist(playlist.clone()));
                 app.ui.drag_playlist = Some(playlist.clone());
             }
@@ -171,6 +170,25 @@ pub fn list(
         "song-actions-{}-{index}",
         playlist.as_deref().unwrap_or("collection")
     );
+    // A long press reorders when this list is reorderable; everywhere else it
+    // is the phone's right click and opens the same actions menu.
+    let hold = (!reorder).then(|| {
+        let entity = cx.entity();
+        let full = full.clone();
+        let playlist = playlist.clone();
+        hold::hold(move |position, _, cx| {
+            entity.update(cx, |app, cx| {
+                let (header, items) =
+                    commands(app, cx, &full, index, slot, removable, playlist.as_deref());
+                if items.is_empty() {
+                    return;
+                }
+
+                app.menu = Some(Menu::context(position, header, items, 0.0));
+                app.notify_shell(cx);
+            });
+        })
+    });
     let trigger = actions::trigger(
         cx,
         trigger_id,
@@ -213,9 +231,21 @@ pub fn list(
         .when(!broken, |this| {
             this.on_hover(cx.listener({
                 let id = row_id.clone();
-                move |_, on: &bool, _, cx| {
-                    hover::set(&id, *on, std::time::Instant::now());
-                    cx.refresh_windows();
+                move |app, on: &bool, window, cx| {
+                    // A lifted row paints its own state; a hover fade under the
+                    // pointer would only keep rebuilding the page every frame.
+                    if app.ui.reorder.is_some() {
+                        return;
+                    }
+
+                    hover::set_in(
+                        Scope::Page,
+                        &id,
+                        *on,
+                        std::time::Instant::now(),
+                        window.last_input_was_touch(),
+                    );
+                    app.paint_page(cx);
                 }
             }))
         })
@@ -230,13 +260,17 @@ pub fn list(
                     return;
                 }
 
-                app.ui.menu = Some(Menu::context(event.position, header, items, 0.0));
-                cx.notify();
+                app.menu = Some(Menu::context(event.position, header, items, 0.0));
+                app.notify_shell(cx);
             }),
         )
         .on_click(cx.listener(move |app, event: &gpui::ClickEvent, _, cx| {
             if app.ui.drag_from.is_some() {
+                // The click stops the mouse up here, so the page never sees
+                // it: settle the drag before swallowing the click.
+                app.finish_drag(cx);
                 cx.stop_propagation();
+                cx.notify();
                 return;
             }
 
@@ -247,7 +281,7 @@ pub fn list(
             cx.stop_propagation();
             let touch = cfg!(target_os = "android") || matches!(event, gpui::ClickEvent::Touch(_));
             if touch {
-                if app.ui.selection.is_empty() {
+                if app.selection.is_empty() {
                     play(app, click_playlist.as_deref(), &click_full, index, cx);
                 } else {
                     app.select_toggle(&id, slot);
@@ -264,8 +298,8 @@ pub fn list(
                 app.select_single(&id, slot);
                 play(app, click_playlist.as_deref(), &click_full, index, cx);
             } else if modifiers.shift
-                && !app.ui.selection.is_empty()
-                && let Some(anchor) = app.ui.anchor
+                && !app.selection.is_empty()
+                && let Some(anchor) = app.anchor
             {
                 app.select_range(&visible, anchor, slot);
             } else if modifiers.platform || modifiers.control {
@@ -280,6 +314,7 @@ pub fn list(
 
             cx.notify();
         }))
+        .when_some(hold, |this, hold| this.child(hold))
         .child(cell(
             app,
             cx,
@@ -288,7 +323,6 @@ pub fn list(
             current,
             loading,
             playing,
-            hint,
             accent,
             broken,
             credits_scope,

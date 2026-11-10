@@ -1,8 +1,8 @@
 use crate::shared::ui::views::design::theme;
 
 use gpui::{
-    App, ClickEvent, Div, ElementId, InteractiveElement, IntoElement, ParentElement, Rgba,
-    Stateful, StatefulInteractiveElement, Styled, Window, div,
+    App, ClickEvent, Div, ElementId, InteractiveElement, IntoElement, MouseButton, ParentElement,
+    Rgba, Stateful, StatefulInteractiveElement, Styled, Window, div,
 };
 
 use crate::shared::ui::views::design::icons::{self, Icon};
@@ -34,6 +34,7 @@ pub fn button(
         .justify_center()
         .rounded(theme::unit(radius))
         .cursor_pointer()
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .on_click(on_click);
     if let Some(background) = background {
         button = button.bg(background);

@@ -1,6 +1,6 @@
 use gpui::{
-    Div, InteractiveElement, ParentElement, Pixels, Stateful, StatefulInteractiveElement, Styled,
-    UniformListScrollHandle, div,
+    Div, InteractiveElement, MouseButton, ParentElement, Pixels, Stateful,
+    StatefulInteractiveElement, Styled, UniformListScrollHandle, div,
 };
 
 use crate::shared::i18n::t;
@@ -128,6 +128,7 @@ pub fn pill(
         .shadow_lg()
         .cursor(gpui::CursorStyle::PointingHand)
         .hover(|this| this.bg(theme::ZINC_800))
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .tooltip(|window, cx| Tooltip::new(t("Jump to current song")).build(window, cx))
         .child(art)
         .child(

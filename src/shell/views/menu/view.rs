@@ -90,7 +90,7 @@ impl Menu {
 /// activates it. Returns whether the key belonged to the menu.
 pub fn keys(app: &mut Jondo, key: &str, window: &mut Window, cx: &mut Context<Jondo>) -> bool {
     let command = {
-        let Some(menu) = app.ui.menu.as_mut() else {
+        let Some(menu) = app.menu.as_mut() else {
             return false;
         };
 
@@ -121,32 +121,34 @@ pub fn keys(app: &mut Jondo, key: &str, window: &mut Window, cx: &mut Context<Jo
 }
 
 pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> gpui::AnyElement {
-    if let Some((stamp, at)) = app.ui.menu_closing {
+    if let Some((stamp, at)) = app.menu_closing {
         if at.elapsed() >= crate::shell::views::sheet::DURATION {
-            app.ui.menu = None;
-            app.ui.menu_closing = None;
-        } else if app.ui.menu.as_ref().is_some_and(|menu| menu.stamp != stamp) {
-            app.ui.menu_closing = None;
+            app.menu = None;
+            app.menu_closing = None;
+        } else if app.menu.as_ref().is_some_and(|menu| menu.stamp != stamp) {
+            app.menu_closing = None;
         }
     }
 
-    let Some(menu) = app.ui.menu.clone() else {
+    let Some(menu) = app.menu.clone() else {
         return div().into_any_element();
     };
 
     let closing = app
-        .ui
         .menu_closing
         .filter(|(stamp, _)| *stamp == menu.stamp)
         .map(|(_, at)| at);
     // A context menu is a pointer-sized popover, so a narrow desktop window
-    // must not turn it into a modal sheet. Only single-choice menus use the
-    // sheet presentation on small viewports.
-    if !menu.context && mobile(window) {
+    // must not turn it into a modal sheet. Android has no right button: its
+    // context menu is opened by a long press and is presented as a bottom
+    // sheet, like every other action list on the phone.
+    let as_sheet = presents_as_sheet(menu.context, mobile(window), cfg!(target_os = "android"));
+    if as_sheet {
         return div()
             .absolute()
             .inset_0()
             .bottom(theme::unit(layouts::bottom(window, true)))
+            .overflow_hidden()
             .child(sheet(app, window, cx, menu, closing))
             .into_any_element();
     }
@@ -158,7 +160,7 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> gp
     };
 
     if fade < 1.0 {
-        window.request_animation_frame();
+        crate::shell::app::motion::ask(window);
     }
 
     let viewport = window.viewport_size();
@@ -249,7 +251,7 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> gp
 
     let dismiss = cx.listener(|app, _: &gpui::MouseDownEvent, _, cx| {
         app.close_menu();
-        cx.notify();
+        app.notify_shell(cx);
     });
 
     div()
@@ -261,7 +263,7 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> gp
             MouseButton::Right,
             cx.listener(|app, _: &gpui::MouseDownEvent, _, cx| {
                 app.close_menu();
-                cx.notify();
+                app.notify_shell(cx);
             }),
         )
         .child(panel)
@@ -270,6 +272,13 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> gp
 
 pub(super) fn mobile(window: &Window) -> bool {
     window.viewport_size().width < theme::unit(768.0)
+}
+
+/// Whether a menu is a bottom sheet instead of a popover anchored to the
+/// pointer. Choices use the sheet on narrow viewports; context menus only on
+/// Android, where there is no right button and every action list is modal.
+pub(super) fn presents_as_sheet(context: bool, mobile: bool, android: bool) -> bool {
+    (!context && mobile) || (context && android)
 }
 
 fn progress(at: Instant, duration: Duration, now: Instant) -> f32 {

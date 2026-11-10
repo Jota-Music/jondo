@@ -239,7 +239,7 @@ fn boxed(state: &Entity<InputState>, masked: bool, mono: bool) -> Div {
         .px(theme::unit(12.0))
         .flex()
         .items_center()
-        .occlude()
+        .block_mouse_except_scroll()
         .child(if masked { input.mask_toggle() } else { input })
 }
 

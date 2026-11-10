@@ -7,7 +7,7 @@ use gpui::{
 use crate::music::rooms::Room;
 use crate::shared::i18n::t;
 use crate::shared::music::views::cover;
-use crate::shared::ui::views::components::{reveal, text};
+use crate::shared::ui::views::components::{hold, reveal, text};
 use crate::shared::ui::views::design::icons;
 use crate::shared::ui::views::design::theme;
 use crate::shell::app::Jondo;
@@ -44,6 +44,8 @@ pub(super) fn tile(
     let id = room.id.clone();
     let target = room.clone();
     let menu_room = room.clone();
+    let hold_room = room.clone();
+    let entity = cx.entity();
 
     let press = cx.listener({
         let id = id.clone();
@@ -63,7 +65,7 @@ pub(super) fn tile(
                 return;
             };
 
-            if from == id {
+            if from == id && app.rooms_ui.drag_from.is_none() {
                 return;
             }
 
@@ -81,6 +83,15 @@ pub(super) fn tile(
     let open = cx.listener({
         let target = target.clone();
         move |app: &mut Jondo, _: &gpui::ClickEvent, window, cx| {
+            if app.rooms_ui.drag_from.is_some() {
+                // The click stops the mouse up here, so the page never sees
+                // it: settle the drag before swallowing the click.
+                app.finish_drag(cx);
+                cx.stop_propagation();
+                cx.notify();
+                return;
+            }
+
             app.edit_room(&target, window, cx);
             cx.notify();
         }
@@ -150,15 +161,26 @@ pub(super) fn tile(
         .on_mouse_down(
             gpui::MouseButton::Right,
             cx.listener(move |app, event: &gpui::MouseDownEvent, _, cx| {
-                app.ui.menu = Some(Menu::context(
+                app.menu = Some(Menu::context(
                     event.position,
                     None,
                     room_menu(&menu_room, ephemeral, live || connecting),
                     0.0,
                 ));
-                cx.notify();
+                app.notify_shell(cx);
             }),
         )
+        .child(hold::hold(move |position, _, cx| {
+            entity.update(cx, |app, cx| {
+                app.menu = Some(Menu::context(
+                    position,
+                    None,
+                    room_menu(&hold_room, ephemeral, live || connecting),
+                    0.0,
+                ));
+                app.notify_shell(cx);
+            });
+        }))
         .child(
             div()
                 .relative()

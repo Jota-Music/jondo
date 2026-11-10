@@ -82,7 +82,7 @@ fn button(
         .justify_center()
         .gap(theme::unit(8.0))
         .rounded(theme::unit(8.0))
-        .occlude();
+        .block_mouse_except_scroll();
     if !disabled {
         element = element.cursor_pointer();
     }

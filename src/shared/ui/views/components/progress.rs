@@ -16,7 +16,11 @@ type Change = Rc<dyn Fn(f32, bool, &mut Window, &mut App) + 'static>;
 pub const HEIGHT: f32 = 8.0;
 
 /// Every horizontal bar shares the same empty-track colour.
-pub const TRACK: Rgba = crate::shared::ui::views::design::theme::NEUTRAL_300;
+pub const TRACK: Rgba = crate::shared::ui::views::design::theme::NEUTRAL_800;
+
+/// The band a finger can grab around the track. A silhouette the design keeps
+/// hairline-thin is still aimed at with the whole pad of a finger.
+const TOUCH: f32 = 44.0;
 
 /// A rounded progress track with a circular thumb.
 pub struct Bar {
@@ -127,15 +131,10 @@ impl Element for Bar {
         window: &mut Window,
         _cx: &mut App,
     ) -> Self::PrepaintState {
-        // A finger needs a bigger target than a 3px line; the extra reach stays
-        // inside the bar's top edge so it does not steal the row below.
-        let floor = if cfg!(target_os = "android") {
-            28.0
-        } else {
-            0.0
-        };
-
-        let reach = self.height.max(self.thumb * 2.0).max(floor);
+        // A finger needs a bigger target than the line it drags: the band is
+        // touch-sized around the silent track, not drawn, so the bar keeps its
+        // hairline look and a miss near the thumb still starts the seek.
+        let reach = self.height.max(self.thumb * 2.0).max(TOUCH);
         let target = Bounds {
             origin: point(bounds.left(), bounds.center().y - theme::unit(reach * 0.5)),
             size: size(bounds.size.width, theme::unit(reach)),
@@ -253,7 +252,10 @@ impl Element for Bar {
         let down = hitbox.clone();
         let held = armed.clone();
         window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
-            if phase.bubble() && event.button == MouseButton::Left && down.contains(&event.position)
+            if phase.bubble()
+                && event.button == MouseButton::Left
+                && down.is_hovered(window)
+                && down.contains(&event.position)
             {
                 held.set(true);
                 change(fraction(event.position), false, window, cx);
@@ -294,7 +296,7 @@ impl Element for Bar {
             }
 
             if event.phase == gpui::TouchPhase::Started {
-                if !area.contains(&event.start_position) {
+                if !area.is_hovered_at(event.start_position, window) {
                     return;
                 }
 
@@ -332,3 +334,7 @@ impl Element for Bar {
         });
     }
 }
+
+#[cfg(test)]
+#[path = "progress.test.rs"]
+mod tests;

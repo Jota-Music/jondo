@@ -26,7 +26,7 @@ use gpui::{
 use crate::shared::i18n::t;
 use crate::shared::music::domain::{Follow, FollowKind, Source};
 use crate::shared::music::views::cover;
-use crate::shared::ui::views::components::{button, reveal, text};
+use crate::shared::ui::views::components::{button, hold, reveal, text};
 use crate::shared::ui::views::design::icons;
 use crate::shared::ui::views::design::theme;
 use crate::shell::app::Jondo;
@@ -47,6 +47,8 @@ pub(super) fn follow_tile(
         .any(|item| item.id.eq_ignore_ascii_case(&follow.id));
     let follow_click = follow.clone();
     let menu_follow = follow.clone();
+    let hold_follow = follow.clone();
+    let entity = cx.entity();
     let art = if shown {
         cover::art(
             &mut app.covers,
@@ -63,6 +65,7 @@ pub(super) fn follow_tile(
         .id(format!("following-{}", follow.id))
         .group(group.clone())
         .w(theme::unit(cell))
+        .h(theme::unit(cover::tile_height(cell)))
         .flex()
         .flex_col()
         .flex_none()
@@ -72,14 +75,25 @@ pub(super) fn follow_tile(
             cx.listener(move |app, event: &gpui::MouseDownEvent, _, cx| {
                 let items = follow_menu(local, &menu_follow);
                 if !items.is_empty() {
-                    app.ui.menu = Some(Menu::context(event.position, None, items, 0.0));
-                    cx.notify();
+                    app.menu = Some(Menu::context(event.position, None, items, 0.0));
+                    app.notify_shell(cx);
                 }
             }),
         )
         .on_click(cx.listener(move |app, _: &gpui::ClickEvent, _, cx| {
             app.open(route.clone(), cx);
             cx.notify();
+        }))
+        .child(hold::hold(move |position, _, cx| {
+            entity.update(cx, |app, cx| {
+                let items = follow_menu(local, &hold_follow);
+                if items.is_empty() {
+                    return;
+                }
+
+                app.menu = Some(Menu::context(position, None, items, 0.0));
+                app.notify_shell(cx);
+            });
         }))
         .child(
             div()
@@ -156,6 +170,8 @@ pub(super) fn follow_row(
         .any(|item| item.id.eq_ignore_ascii_case(&follow.id));
     let follow_click = follow.clone();
     let menu_follow = follow.clone();
+    let hold_follow = follow.clone();
+    let entity = cx.entity();
     let art = if shown {
         cover::art(
             &mut app.covers,
@@ -183,14 +199,25 @@ pub(super) fn follow_row(
             cx.listener(move |app, event: &gpui::MouseDownEvent, _, cx| {
                 let items = follow_menu(local, &menu_follow);
                 if !items.is_empty() {
-                    app.ui.menu = Some(Menu::context(event.position, None, items, 0.0));
-                    cx.notify();
+                    app.menu = Some(Menu::context(event.position, None, items, 0.0));
+                    app.notify_shell(cx);
                 }
             }),
         )
         .on_click(cx.listener(move |app, _: &gpui::ClickEvent, _, cx| {
             app.open(route.clone(), cx);
             cx.notify();
+        }))
+        .child(hold::hold(move |position, _, cx| {
+            entity.update(cx, |app, cx| {
+                let items = follow_menu(local, &hold_follow);
+                if items.is_empty() {
+                    return;
+                }
+
+                app.menu = Some(Menu::context(position, None, items, 0.0));
+                app.notify_shell(cx);
+            });
         }))
         .child(div().w(theme::unit(8.0)))
         .child(art)

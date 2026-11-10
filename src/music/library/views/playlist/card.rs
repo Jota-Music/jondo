@@ -8,7 +8,7 @@ use crate::music::track::views::actions;
 use crate::shared::i18n::t;
 use crate::shared::music::domain::Playlist;
 use crate::shared::music::views::cover;
-use crate::shared::ui::views::components::{reveal, text};
+use crate::shared::ui::views::components::{hold, reveal, text};
 use crate::shared::ui::views::design::icons;
 use crate::shared::ui::views::design::theme;
 use crate::shell::app::{Jondo, Route};
@@ -59,6 +59,15 @@ pub fn tile(
         }
     });
     let open = cx.listener(move |app: &mut Jondo, _: &gpui::ClickEvent, _, cx| {
+        if app.ui.drag_shelf_from.is_some() {
+            // The click stops the mouse up here, so the page never sees it:
+            // settle the drag before swallowing the click.
+            app.finish_drag(cx);
+            cx.stop_propagation();
+            cx.notify();
+            return;
+        }
+
         app.open(Route::Playlist(id.clone()), cx);
         cx.notify();
     });
@@ -96,7 +105,7 @@ pub fn tile(
                 return;
             };
 
-            if from == id {
+            if from == id && app.ui.drag_shelf_from.is_none() {
                 return;
             }
 
@@ -113,12 +122,15 @@ pub fn tile(
     });
 
     let menu_item = item.clone();
+    let hold_item = item.clone();
+    let entity = cx.entity();
     let selector = item.id.clone();
     div()
         .debug_selector(move || format!("playlist-card-{selector}"))
         .id(format!("tile-{group}"))
         .group(group.clone())
         .w(theme::unit(width))
+        .h(theme::unit(cover::tile_height(width)))
         .flex_none()
         .flex()
         .flex_col()
@@ -133,11 +145,18 @@ pub fn tile(
             gpui::MouseButton::Right,
             cx.listener(move |app, event: &gpui::MouseDownEvent, _, cx| {
                 let items = actions::shelf(app, &menu_item, cx);
-                app.ui.menu = Some(Menu::context(event.position, None, items, 0.0));
-                cx.notify();
+                app.menu = Some(Menu::context(event.position, None, items, 0.0));
+                app.notify_shell(cx);
             }),
         )
         .on_click(open)
+        .child(hold::hold(move |position, _, cx| {
+            entity.update(cx, |app, cx| {
+                let items = actions::shelf(app, &hold_item, cx);
+                app.menu = Some(Menu::context(position, None, items, 0.0));
+                app.notify_shell(cx);
+            });
+        }))
         .when(
             draggable
                 && app.ui.drag_shelf_to.as_deref() == Some(item.id.as_str())

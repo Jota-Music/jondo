@@ -1,5 +1,5 @@
 use gpui::{
-    AnyElement, Context, InteractiveElement, IntoElement, ParentElement, Stateful,
+    AnyElement, Context, InteractiveElement, IntoElement, MouseButton, ParentElement, Stateful,
     StatefulInteractiveElement, Styled, div,
 };
 
@@ -96,6 +96,7 @@ fn link(
         element
             .cursor_pointer()
             .hover(|style| style.underline())
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .on_click(cx.listener(move |app, _: &gpui::ClickEvent, _, cx| {
                 cx.stop_propagation();
                 app.open(route.clone(), cx);

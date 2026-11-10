@@ -3,6 +3,7 @@ use gpui::{
 };
 
 use crate::music::track::views::actions;
+use crate::shared::ui::views::components::hold;
 use crate::shared::ui::views::design::theme;
 use crate::shell::app::Jondo;
 use crate::shell::views::menu::{Command, Menu};
@@ -16,6 +17,7 @@ pub fn panel(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> A
     }
 
     let has_song = app.player.read(cx).current().is_some();
+    let entity = cx.entity();
     div()
         .w_full()
         .flex_none()
@@ -48,10 +50,39 @@ pub fn panel(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> A
                     return;
                 }
 
-                app.ui.menu = Some(Menu::context(event.position, None, items, 0.0));
-                cx.notify();
+                app.menu = Some(Menu::context(event.position, None, items, 0.0));
+                app.notify_shell(cx);
             }),
         )
+        .child(hold::hold(move |position, _, cx| {
+            entity.update(cx, |app, cx| {
+                let items = app
+                    .player
+                    .read(cx)
+                    .current()
+                    .cloned()
+                    .map(|song| {
+                        actions::track(
+                            app,
+                            cx,
+                            Vec::new(),
+                            vec![song],
+                            Command::Toggle,
+                            None,
+                            None,
+                            None,
+                            Vec::new(),
+                        )
+                    })
+                    .unwrap_or_default();
+                if items.is_empty() {
+                    return;
+                }
+
+                app.menu = Some(Menu::context(position, None, items, 0.0));
+                app.notify_shell(cx);
+            });
+        }))
         .child(crate::shared::ui::views::components::column(
             div()
                 .flex()

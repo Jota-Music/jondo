@@ -46,7 +46,11 @@ fn boxed(state: &Entity<InputState>, disabled: bool, masked: bool) -> Div {
         .px(theme::unit(12.0))
         .flex()
         .items_center()
-        .occlude()
+        .block_mouse_except_scroll()
         .when(disabled, |this| this.opacity(0.5))
         .child(if masked { input.mask_toggle() } else { input })
 }
+
+#[cfg(test)]
+#[path = "field.test.rs"]
+mod tests;
