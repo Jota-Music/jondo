@@ -3,6 +3,7 @@ mod library;
 mod login;
 mod message;
 mod playlist;
+mod radio;
 mod session;
 #[cfg(test)]
 #[path = "spotify.test.rs"]
@@ -16,6 +17,7 @@ pub use library::{following, friends, library, liked, user};
 pub use login::{Login, login};
 pub use message::enrich_albums;
 pub use playlist::playlist;
+pub use radio::radio;
 
 pub(crate) use playlist::{hex_to_base62, id_to_hex};
 pub use session::Session;

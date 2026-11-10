@@ -9,7 +9,7 @@ use crate::shared::storage::SpotifyAuth;
 
 #[cfg(test)]
 use super::*;
-use super::{library::*, login::*, playlist::*, session::*, tracks::*};
+use super::{library::*, login::*, playlist::*, radio::*, session::*, tracks::*};
 
 #[test]
 fn an_id_shaped_query_is_opened_as_that_track() {
@@ -40,6 +40,30 @@ fn a_context_is_read_page_by_page() {
     track_uris(&page, &mut uris);
     assert_eq!(uris, ["spotify:track:a", "spotify:track:b"]);
     assert_eq!(next_page(&page), None);
+}
+
+#[test]
+fn a_radio_seed_is_the_bare_track() {
+    for id in [
+        "spotify:radio:track:abc",
+        "spotify:station:track:abc",
+        "spotify:track:abc",
+        "spotify:radio:track:spotify:track:abc",
+        "abc",
+    ] {
+        assert_eq!(seed(id), "abc", "{id}");
+    }
+}
+
+#[test]
+fn a_context_track_without_a_uri_is_read_from_its_gid() {
+    use base64::Engine as _;
+    let gid = base64::engine::general_purpose::STANDARD.encode([0u8; 16]);
+    let value: serde_json::Value =
+        serde_json::from_str(&format!(r#"{{"tracks":[{{"gid":"{gid}"}}]}}"#)).unwrap();
+    let mut uris = Vec::new();
+    track_uris(&value, &mut uris);
+    assert_eq!(uris, ["spotify:track:0000000000000000000000"]);
 }
 
 #[test]

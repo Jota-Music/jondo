@@ -181,6 +181,11 @@ pub(super) fn spanish(key: &str) -> &str {
         "More actions" => "Más acciones",
         "Jump to current song" => "Ir a la canción actual",
         "Assign audio" => "Asignar audio",
+        "Go to radio" => "Ir a radio",
+        "Radio unavailable" => "Radio no disponible",
+        "Spotify could not build this radio. Try again." => {
+            "Spotify no pudo crear esta radio. Inténtalo de nuevo."
+        }
         "Below current" => "Debajo del actual",
         "Move down" => "Bajar",
         "Remove" => "Quitar",

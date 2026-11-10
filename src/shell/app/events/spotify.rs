@@ -57,7 +57,11 @@ impl Jondo {
                     }
 
                     let cached = playlist.clone();
-                    self.jobs.task(move || cache::put(&cached));
+                    // Radio is recomputed on every open, so it never reaches
+                    // the on-disk playlist cache.
+                    if !id.starts_with("spotify:radio:") {
+                        self.jobs.task(move || cache::put(&cached));
+                    }
                     let mut changed = false;
                     self.library.update(cx, |library, _| {
                         if let Some(summary) = library.spotify.iter_mut().find(|item| item.id == id)
@@ -123,8 +127,12 @@ impl Jondo {
                         catalog
                             .discography
                             .retain(|(artist_id, _)| artist_id != &id);
-                        catalog.artists.ready(id, artist);
+                        catalog.artists.ready(id.clone(), artist);
                     });
+                    if matches!(&self.route, Route::Artist(current) if current == &id) {
+                        self.ensure_artist_meta(&id, cx);
+                    }
+
                     self.touch_library();
                 }
                 Err(error) => {
@@ -166,6 +174,7 @@ impl Jondo {
                             library.follows = follows;
                             library.following.error = None;
                         });
+                        self.ensure_follow_meta(cx);
                         self.touch_library();
                     }
                     Err(error) => {

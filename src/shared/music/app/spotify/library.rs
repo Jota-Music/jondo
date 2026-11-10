@@ -135,8 +135,20 @@ pub(super) async fn context_uris(
     session: &Arc<Session>,
     uri: &str,
 ) -> Result<Vec<String>, String> {
+    context_pages(client, session, uri, usize::MAX).await
+}
+
+/// Reads a context page by page. A radio context never reports the end, so the
+/// caller bounds how many pages it follows.
+pub(super) async fn context_pages(
+    client: &reqwest::Client,
+    session: &Arc<Session>,
+    uri: &str,
+    pages: usize,
+) -> Result<Vec<String>, String> {
     let mut uris = Vec::new();
     let mut path = format!("/context-resolve/v1/{uri}");
+    let mut read = 0usize;
     loop {
         let response = authorized(session, "spotify context", |access| {
             client
@@ -155,6 +167,10 @@ pub(super) async fn context_uris(
             .map_err(|error| format!("spotify context: {error}"))?;
 
         track_uris(&value, &mut uris);
+        read += 1;
+        if read >= pages {
+            break;
+        }
 
         let Some(next) = next_page(&value) else {
             break;
@@ -177,14 +193,29 @@ pub(super) fn track_uris(value: &serde_json::Value, uris: &mut Vec<String>) {
             continue;
         };
 
-        uris.extend(
-            tracks
-                .iter()
-                .filter_map(|track| track.get("uri").and_then(serde_json::Value::as_str))
+        for track in tracks {
+            if let Some(uri) = track
+                .get("uri")
+                .and_then(serde_json::Value::as_str)
                 .filter(|uri| uri.starts_with("spotify:track:"))
-                .map(str::to_owned),
-        );
+            {
+                uris.push(uri.to_owned());
+            } else if let Some(uri) = track
+                .get("gid")
+                .and_then(serde_json::Value::as_str)
+                .and_then(track_gid)
+            {
+                uris.push(uri);
+            }
+        }
     }
+}
+
+/// A context page may carry the track as its raw 16-byte gid instead of a uri.
+fn track_gid(gid: &str) -> Option<String> {
+    use base64::Engine as _;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(gid).ok()?;
+    (bytes.len() == 16).then(|| format!("spotify:track:{}", hex_to_base62(&hex(&bytes))))
 }
 
 pub(super) fn next_page(value: &serde_json::Value) -> Option<&str> {

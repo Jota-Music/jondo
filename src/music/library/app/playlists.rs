@@ -75,6 +75,19 @@ impl Jondo {
             return;
         };
 
+        if let Some(track) = id.strip_prefix("spotify:radio:track:") {
+            self.catalog
+                .update(cx, |catalog, _| catalog.playlists.begin(id));
+            let id = id.to_owned();
+            let track = track.to_owned();
+            let http = self.http.clone();
+            self.jobs.spawn(async move {
+                let result = spotify::radio(&http, &session, &track).await;
+                Event::SpotifyPlaylist(id, result)
+            });
+            return;
+        }
+
         if id.starts_with("spotify:user:") && id.ends_with(":collection") {
             self.catalog
                 .update(cx, |catalog, _| catalog.playlists.begin(id));

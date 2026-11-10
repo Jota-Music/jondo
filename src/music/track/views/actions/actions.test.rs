@@ -1,4 +1,10 @@
-use super::page_link;
+use super::{page_link, radio_id};
+
+#[test]
+fn radio_ids_are_keyed_by_the_track() {
+    assert_eq!(radio_id("spotify:track:abc"), "spotify:radio:track:abc");
+    assert_eq!(radio_id("abc"), "spotify:radio:track:abc");
+}
 
 #[test]
 fn channel_links_work_from_a_channel_id_or_a_handle() {

@@ -33,6 +33,7 @@ pub enum Icon {
     PauseLine,
     ListPlus,
     ListChecks,
+    Radio,
     Square,
     SquarePlus,
     SquareCheck,
@@ -122,6 +123,7 @@ pub const PLAY_LINE: Icon = Icon::PlayLine;
 pub const PAUSE_LINE: Icon = Icon::PauseLine;
 pub const LIST_PLUS: Icon = Icon::ListPlus;
 pub const LIST_CHECKS: Icon = Icon::ListChecks;
+pub const RADIO: Icon = Icon::Radio;
 pub const SQUARE: Icon = Icon::Square;
 pub const SQUARE_PLUS: Icon = Icon::SquarePlus;
 pub const SQUARE_CHECK: Icon = Icon::SquareCheck;
@@ -193,6 +195,7 @@ impl Icon {
             Self::PauseLine => "pause-line",
             Self::ListPlus => "list-plus",
             Self::ListChecks => "list-checks",
+            Self::Radio => "radio",
             Self::Square => "square",
             Self::SquarePlus => "square-plus",
             Self::SquareCheck => "square-check",
@@ -283,6 +286,7 @@ impl Icon {
             Self::Pause | Self::PauseLine => t("Pause"),
             Self::ListPlus => t("Add to queue"),
             Self::ListChecks => t("Select all"),
+            Self::Radio => t("Radio"),
             Self::Square => t("Deselect all"),
             Self::SquarePlus => t("Add to playlist"),
             Self::SquareCheck => t("Select"),
@@ -373,6 +377,7 @@ impl Icon {
             Self::PauseLine => include_str!("../../../../../assets/icons/pause-line.svg"),
             Self::ListPlus => include_str!("../../../../../assets/icons/list-plus.svg"),
             Self::ListChecks => include_str!("../../../../../assets/icons/list-checks.svg"),
+            Self::Radio => include_str!("../../../../../assets/icons/radio.svg"),
             Self::Square => include_str!("../../../../../assets/icons/square.svg"),
             Self::SquarePlus => include_str!("../../../../../assets/icons/square-plus.svg"),
             Self::SquareCheck => include_str!("../../../../../assets/icons/square-check.svg"),

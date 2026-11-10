@@ -7,11 +7,12 @@ use gpui::{
 use gpui_kit::component::tooltip::Tooltip;
 
 use crate::shared::i18n::t;
-use crate::shared::music::domain::{Follow, Playlist, Song};
+use crate::shared::music::domain::{Follow, Playlist, Song, Source};
 use crate::shared::ui::views::components::hover;
+use crate::shared::ui::views::components::paint::{self, Scope};
 use crate::shared::ui::views::design::icons;
 use crate::shared::ui::views::design::theme;
-use crate::shell::app::Jondo;
+use crate::shell::app::{Jondo, Route};
 use crate::shell::views::menu::{Command, Item, Menu};
 
 #[allow(clippy::too_many_arguments)]
@@ -65,7 +66,7 @@ pub fn track(
     if (select_all.is_some() || list.len() > 1) && list.len() > 1 {
         let all = list
             .iter()
-            .all(|song| app.ui.selection.iter().any(|id| id == &song.id));
+            .all(|song| app.selection.iter().any(|id| id == &song.id));
         items.push(Item::new(
             if all {
                 icons::SQUARE
@@ -86,7 +87,7 @@ pub fn track(
     }
 
     if let Some((id, index)) = toggle.filter(|_| single) {
-        let selected = app.ui.selection.iter().any(|item| item == &id);
+        let selected = app.selection.iter().any(|item| item == &id);
         items.push(Item::new(
             if selected {
                 icons::SQUARE
@@ -99,6 +100,14 @@ pub fn track(
     }
 
     if single {
+        if list[0].source == Source::Spotify {
+            items.push(Item::new(
+                icons::RADIO,
+                t("Go to radio"),
+                Command::Open(Route::Playlist(radio_id(&list[0].id))),
+            ));
+        }
+
         items.push(Item::new(
             icons::LINK_2,
             t("Assign audio"),
@@ -194,7 +203,7 @@ pub fn playlist(app: &Jondo, playlist: &Playlist, cx: &App) -> Vec<Item> {
         .collect();
     let mut items = Vec::new();
 
-    if !playlist.is_local() && !playlist.liked() {
+    if !playlist.is_local() && !playlist.liked() && !playlist.radio() {
         let saved = app.is_saved(&playlist.id);
         items.push(Item::new(
             icons::HEART,
@@ -214,7 +223,7 @@ pub fn playlist(app: &Jondo, playlist: &Playlist, cx: &App) -> Vec<Item> {
     if !tracks.is_empty() {
         let all = tracks
             .iter()
-            .all(|song| app.ui.selection.iter().any(|id| id == &song.id));
+            .all(|song| app.selection.iter().any(|id| id == &song.id));
         items.push(Item::new(
             icons::LIST_PLUS,
             t("Add to queue"),
@@ -309,7 +318,7 @@ pub fn shelf(app: &Jondo, playlist: &Playlist, cx: &App) -> Vec<Item> {
         Command::PlaylistPlay(playlist.id.clone()),
     ));
 
-    if !playlist.is_local() && !playlist.liked() {
+    if !playlist.is_local() && !playlist.liked() && !playlist.radio() {
         let saved = app.is_saved(&playlist.id);
         items.push(Item::new(
             icons::HEART,
@@ -395,12 +404,30 @@ pub fn trigger<F>(
 where
     F: Fn(&mut Jondo, &App) -> (Option<SharedString>, Vec<Item>) + 'static,
 {
+    trigger_in(Scope::Both, cx, id, 28.0, build, bottom)
+}
+
+pub fn trigger_in<F>(
+    scope: Scope,
+    cx: &mut Context<Jondo>,
+    id: impl Into<ElementId>,
+    size: f32,
+    build: F,
+    bottom: f32,
+) -> Stateful<Div>
+where
+    F: Fn(&mut Jondo, &App) -> (Option<SharedString>, Vec<Item>) + 'static,
+{
     let id: ElementId = id.into();
     let fade = hover::value(&id, std::time::Instant::now());
     div()
         .id(id.clone())
-        .w(theme::unit(28.0))
-        .h(theme::unit(28.0))
+        .debug_selector({
+            let id = id.clone();
+            move || id.to_string()
+        })
+        .w(theme::unit(size))
+        .h(theme::unit(size))
         .flex_none()
         .flex()
         .items_center()
@@ -412,9 +439,15 @@ where
         })
         .on_hover({
             let id = id.clone();
-            move |on: &bool, _, cx| {
-                hover::set(&id, *on, std::time::Instant::now());
-                cx.refresh_windows();
+            move |on: &bool, window, cx| {
+                hover::set_in(
+                    scope,
+                    &id,
+                    *on,
+                    std::time::Instant::now(),
+                    window.last_input_was_touch(),
+                );
+                paint::paint(scope, cx);
             }
         })
         .on_click(cx.listener(move |app, event: &gpui::ClickEvent, _, cx| {
@@ -424,8 +457,8 @@ where
                 return;
             }
 
-            app.ui.menu = Some(Menu::context(event.position(), header, items, bottom));
-            cx.notify();
+            app.menu = Some(Menu::context(event.position(), header, items, bottom));
+            app.notify_shell(cx);
         }))
         .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .child(icons::icon(
@@ -465,6 +498,11 @@ pub fn page_link(page: &str, id: &str) -> Option<String> {
     }
 
     Some(format!("https://open.spotify.com/{page}/{spotify}"))
+}
+
+fn radio_id(id: &str) -> String {
+    let track = id.strip_prefix("spotify:track:").unwrap_or(id);
+    format!("spotify:radio:track:{track}")
 }
 
 fn spotify_link(song: &Song) -> Option<String> {
