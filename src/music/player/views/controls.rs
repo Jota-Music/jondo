@@ -280,7 +280,7 @@ pub(crate) fn volume_control(
         .flex()
         .items_center()
         .gap(theme::unit(8.0))
-        .child(volume_button(app, cx, size))
+        .child(volume_button(app, cx, size, size))
         .child(volume_bar(app, cx, Some(bar_width), kind))
 }
 
@@ -295,7 +295,7 @@ pub(super) fn volume_inline(
         .flex()
         .items_center()
         .gap(theme::unit(8.0))
-        .child(volume_button(app, cx, 24.0))
+        .child(volume_button(app, cx, 24.0, 24.0))
         .child(
             div()
                 .flex_1()
@@ -307,7 +307,8 @@ pub(super) fn volume_inline(
 pub(super) fn volume_button(
     app: &mut Jondo,
     cx: &mut Context<Jondo>,
-    size: f32,
+    glyph: f32,
+    target: f32,
 ) -> impl IntoElement {
     let (muted, volume) = {
         let player = app.player.read(cx);
@@ -327,9 +328,9 @@ pub(super) fn volume_button(
         Scope::Shell,
         "volume-toggle",
         icon,
-        size,
+        glyph,
         app.accent,
-        size,
+        target,
         true,
         cx.listener(|app, _: &gpui::ClickEvent, _, cx| {
             app.toggle_mute(cx);
@@ -398,15 +399,15 @@ pub(super) fn volume_tip(app: &mut Jondo, cx: &mut Context<Jondo>) -> impl IntoE
                     app.ui.volume_icon = *on;
                     cx.notify();
                 }))
-                .child(volume_button(app, cx, 22.0)),
+                .child(volume_button(app, cx, 24.0, 36.0)),
         )
         .when(open, |this| {
             this.child(
                 div()
                     .id("volume-tip")
                     .absolute()
-                    .bottom(theme::unit(22.0))
-                    .left(theme::unit(-9.0))
+                    .bottom(theme::unit(36.0))
+                    .left(theme::unit(-2.0))
                     .w(theme::unit(40.0))
                     .p(theme::unit(8.0))
                     .flex()

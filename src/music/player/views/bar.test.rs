@@ -92,6 +92,11 @@ fn the_phone_bar_keeps_finger_sized_controls(cx: &mut TestAppContext) {
         cx.debug_bounds("bar-volume").is_some(),
         "a phone with room keeps the speaker for its hover fader"
     );
+    let speaker = width(cx, "bar-volume").as_f32();
+    assert!(
+        (speaker - theme::unit(36.0).as_f32()).abs() <= 1.0,
+        "the speaker keeps the 36px Jota gives it on the bar, got {speaker}"
+    );
 
     let expand = cx.debug_bounds("bar-expand").unwrap().center();
     for expected in [true, false] {

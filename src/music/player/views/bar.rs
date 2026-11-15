@@ -19,7 +19,11 @@ use super::controls::{seek_bar, volume_control, volume_tip};
 pub fn bar(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> AnyElement {
     let narrow = window.viewport_size().width < theme::unit(768.0);
     let viewport = window.viewport_size().width.as_f32();
-    let gap = if narrow { 6.0 } else { 12.0 };
+    // Jota's row: 8px between the song and the controls, 4 on the narrowest
+    // phones; 4px between the two control groups on a phone, 12 on the desktop.
+    let tiny = viewport < theme::unit(420.0).as_f32();
+    let row_gap = if tiny { 4.0 } else { 8.0 };
+    let group_gap = if narrow { 4.0 } else { 12.0 };
     let volume_width = if viewport >= 768.0 { 144.0 } else { 0.0 };
 
     let song = app.player.read(cx).current().cloned();
@@ -66,15 +70,15 @@ pub fn bar(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> Any
         app,
         cx,
         narrow,
-        viewport < 420.0,
-        gap,
+        tiny,
+        group_gap,
         volume_width,
         fill,
         color,
         has_song,
         player_menu.clone(),
     );
-    let left = leading(app, cx, song, viewport < 420.0);
+    let left = leading(app, cx, song, tiny);
     let hold_menu = player_menu.clone();
     let entity = cx.entity();
     // Same box as the web bar: the seek line in flow, then a 12px padded row
@@ -120,10 +124,10 @@ pub fn bar(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> Any
                 .w_full()
                 .py(theme::unit(12.0))
                 // Jota tightens the row on the narrowest phones.
-                .px(theme::unit(if viewport < 420.0 { 8.0 } else { 16.0 }))
+                .px(theme::unit(if tiny { 8.0 } else { 16.0 }))
                 .flex()
                 .items_center()
-                .gap(theme::unit(gap))
+                .gap(theme::unit(row_gap))
                 .child(left)
                 .child(right),
         );
@@ -136,18 +140,21 @@ fn controls(
     cx: &mut Context<Jondo>,
     narrow: bool,
     tiny: bool,
-    gap: f32,
+    group_gap: f32,
     volume_width: f32,
     fill: gpui::Rgba,
     color: gpui::Rgba,
     has_song: bool,
     menu: Vec<Item>,
 ) -> gpui::Div {
+    // Inside a group the gap halves on the narrowest phones; between the
+    // groups it keeps the 4px the row's right side is drawn with.
+    let inner_gap = if tiny { 2.0 } else { 4.0 };
     let mut right = div()
         .flex_none()
         .flex()
         .items_center()
-        .gap(theme::unit(gap));
+        .gap(theme::unit(group_gap));
     if !narrow {
         right = right
             .child(button::icon_flat_in(
@@ -190,11 +197,7 @@ fn controls(
             ));
     }
 
-    let mut transport =
-        div()
-            .flex()
-            .items_center()
-            .gap(theme::unit(if narrow { 2.0 } else { 4.0 }));
+    let mut transport = div().flex().items_center().gap(theme::unit(inner_gap));
     if volume_width > 0.0 {
         transport = transport
             .child(volume_control(app, cx, volume_width, false, Drag::Volume))
@@ -258,10 +261,7 @@ fn controls(
         ));
     right = right.child(transport);
 
-    let mut extras = div()
-        .flex()
-        .items_center()
-        .gap(theme::unit(if narrow { 0.0 } else { 2.0 }));
+    let mut extras = div().flex().items_center().gap(theme::unit(inner_gap));
     if !narrow {
         extras = extras.child(button::icon_flat_in(
             Scope::Shell,
