@@ -18,12 +18,12 @@ impl Jondo {
         }
 
         match &route {
-            Route::Playlist(id) => self.reload_playlist(id, cx),
-            Route::Album(id) => self.reload_album(id, cx),
-            Route::Artist(id) => self.reload_artist(id, cx),
-            Route::User(username) => self.reload_user(username, cx),
+            Route::Playlist(id) => self.ensure_playlist(id, cx),
+            Route::Album(id) => self.ensure_album(id, cx),
+            Route::Artist(id) => self.ensure_artist(id, cx),
+            Route::User(username) => self.ensure_user(username, cx),
             Route::Channel(id) => {
-                self.reload_channel(id, cx);
+                self.ensure_channel(id, cx);
                 self.ui.channel_tab = "videos".to_owned();
                 self.ui.channel_query.clear();
                 self.ui.channel_order = Order::Added;
@@ -42,10 +42,11 @@ impl Jondo {
         self.ensure_route(cx);
     }
 
-    /// Loads whatever the current route needs. Route entry calls it after
-    /// clearing the cache it wants refreshed; history calls it too, so the
-    /// page never starts a request from `render`.
-    fn ensure_route(&mut self, cx: &mut gpui::Context<Self>) {
+    /// Loads whatever the current route needs, painting the cached copy first
+    /// and asking again once it is stale. Route entry calls it after clearing
+    /// the cache it wants refreshed; history calls it too, so the page never
+    /// starts a request from `render`.
+    pub(crate) fn ensure_route(&mut self, cx: &mut gpui::Context<Self>) {
         match self.route.clone() {
             Route::Playlist(id) => self.ensure_playlist(&id, cx),
             Route::Album(id) => self.ensure_album(&id, cx),

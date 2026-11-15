@@ -432,6 +432,9 @@ impl Jondo {
         self.persist(cx);
         self.load_library(session.clone(), cx);
         self.load_following(session, cx);
+        // The route may have been opened before the session existed, which
+        // leaves it with nothing in flight: ask again now that it can answer.
+        self.ensure_route(cx);
         let pending = self.catalog.update(cx, |catalog, _| catalog.pending.take());
         if let Some(query) = pending {
             self.catalog
