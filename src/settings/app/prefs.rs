@@ -24,6 +24,11 @@ impl Jondo {
         self.persist(cx);
     }
 
+    pub fn set_backdrop(&mut self, on: bool, cx: &gpui::App) {
+        self.store.backdrop = on;
+        self.persist(cx);
+    }
+
     pub fn set_trim_memory(&mut self, on: bool, cx: &gpui::App) {
         self.store.trim_memory = on;
         self.persist(cx);

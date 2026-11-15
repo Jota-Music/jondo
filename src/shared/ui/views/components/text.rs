@@ -4,6 +4,14 @@ use gpui::{Div, FontFeatures, ParentElement, Rgba, SharedString, Styled, div, re
 
 use crate::shared::ui::views::design::theme;
 
+const LINE: f32 = 1.2;
+
+/// The box a body line of `size` occupies, line height included. Placeholders
+/// that stand in for a line measure with it so nothing shifts when it lands.
+pub fn line(size: f32) -> f32 {
+    size * LINE
+}
+
 /// A single line of body text at the application type scale.
 ///
 /// A zero minimum width lets the line shrink inside a flex row and wrap
@@ -14,7 +22,7 @@ pub fn text(value: impl Into<SharedString>, size: f32, color: Rgba) -> Div {
         .text_size(theme::unit(size))
         .text_color(color)
         .font_family(theme::FAMILY)
-        .line_height(relative(1.2))
+        .line_height(relative(LINE))
         .child(value.into())
 }
 
@@ -23,6 +31,7 @@ pub fn numeric(value: impl Into<SharedString>, size: f32, color: Rgba) -> Div {
     text(value, size, color)
         .font_features(tabular())
         .flex_shrink_0()
+        .whitespace_nowrap()
 }
 
 fn tabular() -> FontFeatures {

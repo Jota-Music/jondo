@@ -68,6 +68,47 @@ pub(super) fn language(app: &mut Jondo, cx: &mut Context<Jondo>) -> AnyElement {
     )
 }
 
+pub(super) fn visuals(app: &mut Jondo, cx: &mut Context<Jondo>) -> AnyElement {
+    let enabled = app.store.backdrop;
+    section(
+        Icon::Palette,
+        t("Visuals"),
+        None,
+        div()
+            .debug_selector(|| "settings-visuals".to_owned())
+            .flex()
+            .items_start()
+            .justify_between()
+            .gap(theme::unit(12.0))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w(theme::unit(0.0))
+                    .flex()
+                    .flex_col()
+                    .gap(theme::unit(4.0))
+                    .child(text::text(t("Ambient background"), 14.0, theme::ZINC_200))
+                    .child(text::text(
+                        t("A soft glow in the colour of the playing cover, behind the content."),
+                        12.0,
+                        theme::FAINT,
+                    )),
+            )
+            .child(
+                switch(
+                    "visuals-backdrop",
+                    enabled,
+                    app.accent,
+                    cx.listener(|app, value: &bool, _, cx| {
+                        app.set_backdrop(*value, cx);
+                        cx.notify();
+                    }),
+                )
+                .into_any_element(),
+            ),
+    )
+}
+
 #[cfg(not(target_os = "android"))]
 pub(super) fn discord(app: &mut Jondo, cx: &mut Context<Jondo>) -> AnyElement {
     let enabled = app.store.discord;

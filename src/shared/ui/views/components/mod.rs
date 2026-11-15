@@ -17,6 +17,6 @@ mod surface;
 mod switch;
 pub mod text;
 
-pub use layout::{column, page, panel};
+pub use layout::{ambient, column, narrow, page, panel, set_ambient, set_narrow};
 pub use surface::surface;
 pub use switch::switch;

@@ -146,6 +146,7 @@ impl Jondo {
             disc_spin: 0.0,
             disc_shown: false,
             disc_at: Instant::now(),
+            trimmed_at: None,
             pin_applied: false,
             clock: Arc::new(tokio::sync::Notify::new()),
             toast: None,
@@ -164,7 +165,6 @@ impl Jondo {
             pending_album: None,
             pending_shuffle: None,
             play_token: 0,
-            route_changed_at: None,
             store,
         };
 

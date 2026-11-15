@@ -36,22 +36,22 @@ pub(super) fn section(
         header = header.child(action);
     }
 
-    surface(
-        16.0,
-        theme::mix(theme::BG, theme::ZINC_900, 0.4),
-        theme::ZINC_800,
-    )
-    .p(theme::unit(16.0))
-    .flex()
-    .flex_col()
-    .gap(theme::unit(16.0))
-    .child(header)
-    .child(body)
-    .into_any_element()
+    // Translucent, so the ambient glow shows through the card the way it does
+    // on the web build.
+    surface(16.0, theme::alpha(theme::ZINC_900, 0.4), theme::ZINC_800)
+        .p(theme::unit(16.0))
+        .flex()
+        .flex_col()
+        .gap(theme::unit(16.0))
+        .child(header)
+        .child(body)
+        .into_any_element()
 }
 
+/// A box inside a section: a ring with no fill, so the ambient glow reaches the
+/// settings the way it reaches everything else behind them.
 pub(super) fn card(inner: impl IntoElement) -> Div {
-    surface(12.0, theme::SURFACE, theme::ZINC_800)
+    surface(12.0, gpui::transparent_black().into(), theme::ZINC_800)
         .p(theme::unit(12.0))
         .child(inner)
 }

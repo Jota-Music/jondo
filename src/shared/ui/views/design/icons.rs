@@ -98,6 +98,8 @@ pub enum Icon {
     Tv,
     Eye,
     EyeOff,
+    Palette,
+    Asterisk,
 }
 
 pub const ARROW_LEFT: Icon = Icon::ArrowLeft;
@@ -264,6 +266,8 @@ impl Icon {
             Self::Tv => "tv",
             Self::Eye => "eye",
             Self::EyeOff => "eye-off",
+            Self::Palette => "palette",
+            Self::Asterisk => "asterisk",
         }
     }
 
@@ -353,6 +357,8 @@ impl Icon {
             Self::Tv => t("Channel"),
             Self::Eye => t("Show password"),
             Self::EyeOff => t("Hide password"),
+            Self::Palette => t("Visuals"),
+            Self::Asterisk => t("All"),
         }
     }
 
@@ -452,6 +458,8 @@ impl Icon {
             Self::Tv => include_str!("../../../../../assets/icons/tv.svg"),
             Self::Eye => include_str!("../../../../../assets/icons/eye.svg"),
             Self::EyeOff => include_str!("../../../../../assets/icons/eye-off.svg"),
+            Self::Palette => include_str!("../../../../../assets/icons/palette.svg"),
+            Self::Asterisk => include_str!("../../../../../assets/icons/asterisk.svg"),
         }
     }
 }

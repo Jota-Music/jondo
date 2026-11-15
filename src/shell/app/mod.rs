@@ -63,6 +63,9 @@ const CLOCK: Duration = Duration::from_millis(96);
 const COVER: Duration = Duration::from_millis(100);
 /// How long the idle clock sleeps between looks at the app.
 const IDLE: Duration = Duration::from_millis(250);
+/// The least time between two heap trims. malloc_trim walks every arena, so it
+/// is a hitch, not a free call: two seconds keeps it off the scroll path.
+const TRIM_GAP: Duration = Duration::from_secs(2);
 const SPIN_PERIOD: f32 = 120.0;
 pub(crate) const SYNC_DEBOUNCE: Duration = Duration::from_secs(3);
 pub(crate) const SYNC_MAX_WAIT: Duration = Duration::from_secs(20);
@@ -113,6 +116,10 @@ pub struct Jondo {
     /// when there is a disc to turn.
     pub(crate) disc_shown: bool,
     disc_at: Instant,
+    /// When the heap last went back to the kernel, so a fast scroll that evicts
+    /// a batch per frame trims once every couple of seconds instead of every
+    /// frame.
+    trimmed_at: Option<Instant>,
     pin_applied: bool,
     /// Wakes the clock out of its idle sleep when motion starts, so the first
     /// animation frame does not wait for the next idle look.
@@ -137,7 +144,6 @@ pub struct Jondo {
     pub(crate) pending_album: Option<String>,
     pub(crate) pending_shuffle: Option<String>,
     pub(crate) play_token: u64,
-    pub(crate) route_changed_at: Option<Instant>,
 }
 
 impl Jondo {

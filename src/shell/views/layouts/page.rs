@@ -1,4 +1,3 @@
-use gpui::prelude::FluentBuilder as _;
 use gpui::{
     AnyElement, Context, InteractiveElement, IntoElement, ParentElement, StyleRefinement, Styled,
     Window, div,
@@ -24,11 +23,14 @@ use crate::shell::views::update;
 use super::chrome::{bottom, resize_bands, safe_area, system};
 use super::toast::toast;
 
-/// How long the page takes to appear after a route change.
-const FADE: std::time::Duration = std::time::Duration::from_millis(140);
-
 pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> impl IntoElement {
     let narrow = window.viewport_size().width < theme::unit(768.0);
+    // Panels and page heads deep in the tree bleed their frame on a phone, and
+    // none of them carries the window: the shell publishes the side of the
+    // breakpoint once per paint instead.
+    crate::shared::ui::views::components::set_narrow(narrow);
+    // The cover slots and the scrollbar thumbs choose their tone from this.
+    crate::shared::ui::views::components::set_ambient(app.store.backdrop);
     // The page is a view of its own, so a moving overlay does not rebuild it:
     // it repaints for a page state change or for a frame that is not just
     // motion, and a page hover that only exists there.
@@ -38,16 +40,6 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> im
         app.paint_page(cx);
     }
     let screen = app.screen.clone();
-
-    // The page fades in from the background instead of animating its own
-    // opacity: an opacity on the page invalidates the view cache every frame,
-    // so the fade would rebuild and lay out the whole screen 8 times.
-    let fade = app
-        .route_changed_at
-        .map(|at| 1.0 - (at.elapsed().as_secs_f32() / FADE.as_secs_f32()).clamp(0.0, 1.0));
-    if fade.is_some_and(|fade| fade > 0.0) {
-        motion::ask(window);
-    }
 
     let has_song = app.player.read(cx).current().is_some();
     let compact = app.ui.compact && has_song;
@@ -71,24 +63,48 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> im
     root = root.child(track::selection::bar(app, cx));
 
     let panel = !narrow && !compact && has_song;
-    if panel {
-        root = root.child(player::panel(app, window, cx));
+
+    // The glow reaches the desktop player and the page: they are the same band
+    // of the shell, the one between the header and the phone navigation. It
+    // used to sit inside the page alone, which left the player on black.
+    let accent = app.accent;
+    let motes = !cx.reduce_motion();
+    let viewport = window.viewport_size();
+    let mut body = div()
+        .flex_1()
+        .min_h(theme::unit(0.0))
+        .w_full()
+        .flex()
+        .flex_col()
+        .relative()
+        .overflow_hidden();
+
+    if app.store.backdrop {
+        body = body.child(super::backdrop::show(
+            accent,
+            viewport.width.as_f32(),
+            viewport.height.as_f32(),
+            motes,
+        ));
     }
 
-    root = root.child(
+    if panel {
+        body = body.child(player::panel(app, window, cx));
+    }
+
+    body = body.child(
         div()
             .flex_1()
             .min_h(theme::unit(0.0))
             .w_full()
-            .overflow_hidden()
-            .py(theme::unit(24.0))
-            .when(narrow, |content| content.px(theme::unit(16.0)))
-            .relative()
-            .child(page(screen.cached(StyleRefinement::default().size_full())))
-            .when_some(fade.filter(|fade| *fade > 0.0), |content, fade| {
-                content.child(div().absolute().inset_0().bg(theme::alpha(theme::BG, fade)))
-            }),
+            .flex()
+            .flex_col()
+            .py(theme::unit(if narrow { 0.0 } else { 24.0 }))
+            // The phone has no inset here: every page carries its own, the way
+            // Jota's shell leaves the horizontal padding to the page it hosts.
+            .child(page(screen.cached(StyleRefinement::default().size_full()))),
     );
+    root = root.child(body);
 
     // Overlays live in the area between the header and the phone navigation,
     // so a sheet's bottom edge lands on the nav instead of sliding under it.

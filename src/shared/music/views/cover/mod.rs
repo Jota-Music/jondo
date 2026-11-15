@@ -8,6 +8,7 @@ use gpui::{
 
 use crate::shared::cover::Covers;
 use crate::shared::music::domain::Source;
+use crate::shared::ui::views::components;
 use crate::shared::ui::views::design::icons::{self, Icon};
 use crate::shared::ui::views::design::theme;
 
@@ -68,13 +69,24 @@ fn photo(image: Arc<RenderImage>, width: f32, height: f32, radius: f32) -> AnyEl
         .into_any_element()
 }
 
+/// The box a cover occupies before its art lands. The glow lifts what is
+/// behind everything, so a zinc-900 slot reads as a lighter grey box on the
+/// tint: it drops to the surface tone there, dark enough to stay a box.
+fn slot() -> Rgba {
+    if components::ambient() {
+        theme::SURFACE
+    } else {
+        theme::ZINC_900
+    }
+}
+
 fn missing(width: f32, height: f32, radius: f32) -> AnyElement {
     div()
         .w(theme::unit(width))
         .h(theme::unit(height))
         .flex_none()
         .rounded(theme::unit(radius))
-        .bg(theme::ZINC_900)
+        .bg(slot())
         .child(
             div()
                 .size_full()
@@ -99,7 +111,7 @@ pub fn placeholder(width: f32, height: f32, radius: f32) -> AnyElement {
         .h(theme::unit(height))
         .flex_none()
         .rounded(theme::unit(radius))
-        .bg(theme::ZINC_900)
+        .bg(slot())
         .into_any_element()
 }
 
@@ -228,9 +240,11 @@ pub fn mosaic(
 }
 
 /// Jota's `.shimmer`: a #18181b tile with a #1f1f24 band sweeping across it
-/// every 1.4s, not a tile that fades in place. The band is painted as clipped
-/// slices so a round avatar never shows the square corners of an overflowing
-/// gradient.
+/// every 1.4s, not a tile that fades in place. It keeps that tone over the
+/// ambient glow, since the web `.shimmer` hardcodes it instead of reading
+/// `--cover-slot`; a surface-dark tile there reads as a black box. The band is
+/// painted as clipped slices so a round avatar never shows the square corners
+/// of an overflowing gradient.
 pub fn shimmer(width: f32, height: f32, radius: f32) -> impl IntoElement {
     let band = (width * 0.6).max(24.0);
     let glow = theme::rgb(0x1f1f24);

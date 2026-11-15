@@ -158,8 +158,22 @@ impl Jondo {
             window.drop_image(frame).ok();
         }
 
-        for image in self.covers.dropped() {
+        // A page leaving the screen evicts its covers in one batch; the pixels
+        // that batch frees are the largest block of garbage the app produces,
+        // and the allocator would keep their pages. Trimming here, and only on
+        // a batch this size, keeps a scroll from paying the walk per frame.
+        let dropped = self.covers.dropped();
+        let batch = dropped.len() >= 16;
+        for image in dropped {
             window.drop_image(image).ok();
+        }
+
+        if batch
+            && self.store.trim_memory
+            && self.trimmed_at.is_none_or(|at| at.elapsed() > TRIM_GAP)
+        {
+            self.trimmed_at = Some(Instant::now());
+            crate::shared::platform::memory::trim();
         }
 
         let pumped = self.pump(cx);
@@ -183,7 +197,6 @@ impl Jondo {
 
         if self.route != *self.history.current() {
             self.route = self.history.current().clone();
-            self.route_changed_at = Some(Instant::now());
             self.paint_page(cx);
         }
 

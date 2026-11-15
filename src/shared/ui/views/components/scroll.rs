@@ -15,12 +15,25 @@ const INSET: f32 = 3.5;
 const RADIUS: f32 = 4.0;
 const MIN: f32 = 40.0;
 
-fn shape(style: ScrollbarThumbStyle) -> ScrollbarThumbStyle {
+fn shape(style: ScrollbarThumbStyle, color: gpui::Rgba) -> ScrollbarThumbStyle {
     style
         .width(theme::unit(THUMB))
         .inset(theme::unit(INSET))
         .radius(theme::unit(RADIUS))
         .min_length(theme::unit(MIN))
+        .bg(color)
+}
+
+/// Over the ambient glow a near-black thumb disappears into the tint, so it
+/// turns translucent white and reads whatever is behind it. With the glow off
+/// the surface is flat and the dark thumb is the quieter one.
+fn thumb(hover: bool) -> gpui::Rgba {
+    match (super::ambient(), hover) {
+        (true, false) => theme::white(0.18),
+        (true, true) => theme::white(0.38),
+        (false, false) => theme::SCROLL_THUMB,
+        (false, true) => theme::ZINC_600,
+    }
 }
 
 struct Grab;
@@ -126,9 +139,9 @@ pub fn bar<H: ScrollbarHandle + Clone>(handle: &H) -> impl IntoElement {
                 .styles(|styles| {
                     styles
                         .track(|track| track.width(theme::unit(GUTTER)))
-                        .thumb(shape)
-                        .thumb_hover(shape)
-                        .thumb_active(shape)
+                        .thumb(|style| shape(style, thumb(false)))
+                        .thumb_hover(|style| shape(style, thumb(true)))
+                        .thumb_active(|style| shape(style, thumb(true)))
                 }),
         )
         .when(overflow, |this| this.child(Grab))

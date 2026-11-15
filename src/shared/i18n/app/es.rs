@@ -4,6 +4,11 @@ pub(super) fn spanish(key: &str) -> &str {
         "Developed by" => "Desarrollado por",
         "Account" => "Cuenta",
         "Language" => "Idioma",
+        "Visuals" => "Visual",
+        "Ambient background" => "Fondo ambiental",
+        "A soft glow in the colour of the playing cover, behind the content." => {
+            "Un brillo suave con el color de la portada en reproducción, detrás del contenido."
+        }
         "Background memory" => "Memoria en segundo plano",
         "Playback" => "Reproducción",
         "Pause when headphones disconnect" => "Pausar al desconectar los auriculares",

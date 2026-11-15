@@ -1,3 +1,4 @@
+mod backdrop;
 mod chrome;
 mod page;
 mod screen;

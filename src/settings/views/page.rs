@@ -16,7 +16,7 @@ use super::account::account;
 use super::backups::{backups, logs};
 #[cfg(target_os = "android")]
 use super::preferences::playback;
-use super::preferences::{about, language, relay};
+use super::preferences::{about, language, relay, visuals};
 #[cfg(not(target_os = "android"))]
 use super::preferences::{discord, memory};
 
@@ -27,6 +27,7 @@ enum Item {
     Header,
     Account,
     Language,
+    Visuals,
     #[cfg(not(target_os = "android"))]
     Discord,
     #[cfg(target_os = "android")]
@@ -45,6 +46,7 @@ const ITEMS: &[Item] = &[
     Item::Header,
     Item::Account,
     Item::Language,
+    Item::Visuals,
     Item::Playback,
     Item::Relay,
     Item::About,
@@ -58,6 +60,7 @@ const ITEMS: &[Item] = &[
     Item::Header,
     Item::Account,
     Item::Language,
+    Item::Visuals,
     Item::Discord,
     Item::Memory,
     Item::Relay,
@@ -80,7 +83,26 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> An
     div()
         .relative()
         .size_full()
-        .child(div().size_full().pr(theme::unit(15.0)).child(page))
+        .when(narrow, |page| page.border_t_1().border_color(theme::BORDER))
+        .when(!narrow, |page| {
+            page.rounded(theme::unit(6.0))
+                .border_1()
+                .border_color(theme::BORDER)
+        })
+        .child(
+            div()
+                .size_full()
+                .when(narrow, |list| {
+                    list.pl(theme::unit(16.0))
+                        .pr(theme::unit(16.0))
+                        .pt(theme::unit(20.0))
+                        .pb(theme::unit(20.0))
+                })
+                .when(!narrow, |list| {
+                    list.pl(theme::unit(12.0)).pr(theme::unit(15.0))
+                })
+                .child(page),
+        )
         .child(scroll::bar(&state))
         .into_any_element()
 }
@@ -96,6 +118,7 @@ fn item(
         Item::Header => header(),
         Item::Account => account(app, window, cx),
         Item::Language => language(app, cx),
+        Item::Visuals => visuals(app, cx),
         #[cfg(not(target_os = "android"))]
         Item::Discord => discord(app, cx),
         #[cfg(target_os = "android")]

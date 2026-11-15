@@ -19,9 +19,9 @@ pub fn panel(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> A
     let has_song = app.player.read(cx).current().is_some();
     let entity = cx.entity();
     div()
+        .debug_selector(|| "player-panel".to_owned())
         .w_full()
         .flex_none()
-        .bg(theme::BG)
         .pt(theme::unit(24.0))
         .pb(theme::unit(24.0))
         .on_mouse_down(
