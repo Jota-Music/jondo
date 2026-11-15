@@ -4,6 +4,7 @@ use librespot_protocol::playlist4_external::SelectedListContent;
 use protobuf::Message;
 
 use crate::shared::music::domain::{Follow, FollowKind, Playlist, Source, UserView};
+use crate::shared::storage::cache::{self, wire};
 
 use super::*;
 use super::{session::*, tracks::*};
@@ -18,7 +19,9 @@ pub async fn library(
     }
 
     let mut playlists = vec![Playlist {
-        id: format!("spotify:user:{username}:collection"),
+        id: crate::shared::music::domain::id::playlist(&format!(
+            "spotify:user:{username}:collection"
+        )),
         cover: Some(LIKED_COVER.to_owned()),
         source: Source::Spotify,
         ..Default::default()
@@ -116,8 +119,9 @@ pub async fn liked(client: &reqwest::Client, session: &Arc<Session>) -> Result<P
         return Err("Sign in to Spotify again".to_owned());
     }
 
-    let id = format!("spotify:user:{username}:collection");
-    let uris = context_uris(client, session, &id).await?;
+    let id =
+        crate::shared::music::domain::id::playlist(&format!("spotify:user:{username}:collection"));
+    let uris = context_uris(client, session, &super::api_uri(&id)).await?;
     let songs = tracks(client, session, &uris).await;
     let track_count = songs.len() as u32;
     Ok(Playlist {
@@ -349,6 +353,11 @@ pub async fn following(
         return Err("Sign in to Spotify again".to_owned());
     }
 
+    let name = format!("spotify/follows/{username}");
+    if let Some(cached) = cache::get::<Vec<wire::Follow>>(&name) {
+        return Ok(cached.into_iter().map(Into::into).collect());
+    }
+
     let value = profile_json(
         client,
         session,
@@ -383,7 +392,7 @@ pub async fn following(
         }
 
         follows.push(Follow {
-            id: id.to_owned(),
+            id: crate::shared::music::domain::Follow::key(kind, id),
             name: profile
                 .get("name")
                 .and_then(|name| name.as_str())
@@ -398,6 +407,14 @@ pub async fn following(
         });
     }
 
+    if let Err(error) = cache::put(
+        &name,
+        &follows.iter().map(wire::Follow::from).collect::<Vec<_>>(),
+        None,
+    ) {
+        log::debug!("spotify follows: {error}");
+    }
+
     Ok(follows)
 }
 
@@ -405,6 +422,12 @@ pub async fn friends(
     client: &reqwest::Client,
     session: &Arc<Session>,
 ) -> Result<Vec<String>, String> {
+    let username = session.username();
+    let name = format!("spotify/friends/{username}");
+    if let Some(cached) = cache::get::<Vec<String>>(&name) {
+        return Ok(cached);
+    }
+
     let value = profile_json(client, session, "/presence-view/v1/buddylist").await?;
     let mut seen = std::collections::HashSet::new();
     let mut friends = Vec::new();
@@ -429,6 +452,10 @@ pub async fn friends(
         }
 
         friends.push(handle.to_owned());
+    }
+
+    if let Err(error) = cache::put(&name, &friends, None) {
+        log::debug!("spotify friends: {error}");
     }
 
     Ok(friends)
@@ -519,11 +546,39 @@ pub(super) async fn public_playlists(
     Ok(playlists)
 }
 
+/// The profile and playlists a user has in the cache, and when the profile was
+/// saved. Both are needed: the page shows who it is and what it published.
+pub fn cached_user(username: &str) -> Option<(UserView, i64)> {
+    let username = crate::shared::music::domain::id::bare(username);
+    let (stored, saved) = cache::get_with_meta::<wire::Profile>(&format!(
+        "spotify/users/{}",
+        username.to_lowercase()
+    ))?;
+    let summaries = cache::get::<Vec<wire::Summary>>(&format!("spotify/library/{username}"))?;
+
+    Some((
+        UserView {
+            username: stored.username,
+            name: stored.display_name,
+            image: (!stored.image_url.is_empty()).then_some(stored.image_url),
+            playlists: summaries
+                .into_iter()
+                .map(wire::Summary::into_domain)
+                .collect(),
+        },
+        saved,
+    ))
+}
+
 pub async fn user(
     client: &reqwest::Client,
     session: &Arc<Session>,
     username: &str,
 ) -> Result<UserView, String> {
+    let username = crate::shared::music::domain::id::bare(username);
+    let profile_name = format!("spotify/users/{}", username.to_lowercase());
+    let library_name = format!("spotify/library/{username}");
+
     let (profile, playlists) = tokio::join!(profile(client, session, username), async {
         if username.eq_ignore_ascii_case(&session.username())
             && let Ok(playlists) = library(client, session).await
@@ -534,10 +589,25 @@ pub async fn user(
         public_playlists(client, session, username).await
     });
     let (name, image) = profile.unwrap_or_else(|_| (username.to_owned(), None));
+    let playlists = playlists?;
+
+    let stored = wire::Profile {
+        username: username.to_owned(),
+        display_name: name.clone(),
+        image_url: image.clone().unwrap_or_default(),
+    };
+    if let Err(error) = cache::put(&profile_name, &stored, None) {
+        log::debug!("spotify user: {error}");
+    }
+    let summaries: Vec<wire::Summary> = playlists.iter().map(wire::Summary::from).collect();
+    if let Err(error) = cache::put(&library_name, &summaries, None) {
+        log::debug!("spotify user playlists: {error}");
+    }
+
     Ok(UserView {
         username: username.to_owned(),
         name,
         image,
-        playlists: playlists?,
+        playlists,
     })
 }

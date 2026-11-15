@@ -44,7 +44,7 @@ pub(super) fn album_artists(album: &AlbumMessage) -> Vec<ArtistRef> {
         .iter()
         .filter_map(|artist| {
             Some(ArtistRef {
-                id: gid(artist.gid.as_ref())?,
+                id: crate::shared::music::domain::id::artist(&gid(artist.gid.as_ref())?),
                 name: artist.name.clone().unwrap_or_default(),
             })
         })
@@ -91,7 +91,7 @@ pub(super) fn meta_song(
         .iter()
         .filter_map(|artist| {
             Some(ArtistRef {
-                id: gid(artist.gid.as_ref())?,
+                id: crate::shared::music::domain::id::artist(&gid(artist.gid.as_ref())?),
                 name: artist.name.clone().unwrap_or_default(),
             })
         })
@@ -102,7 +102,8 @@ pub(super) fn meta_song(
         artists: artists.iter().map(|artist| artist.name.clone()).collect(),
         artist_ids: artists.iter().map(|artist| artist.id.clone()).collect(),
         album: album_name,
-        album_id: Some(album_id.to_owned()),
+        album_id: Some(crate::shared::music::domain::id::album(album_id)),
+        album_year: source_album.map(album_year).unwrap_or_default(),
         playlist_id: None,
         cover,
         duration: (track.duration.unwrap_or(0).max(0) / 1000) as u32,
@@ -124,7 +125,7 @@ pub(super) fn album_from_message(id: &str, message: &AlbumMessage) -> Album {
         .map(|track| meta_song(track, Some(message), id))
         .collect();
     Album {
-        id: id.to_owned(),
+        id: crate::shared::music::domain::id::album(id),
         name,
         artists,
         cover,
@@ -137,7 +138,7 @@ pub(super) fn album_from_message(id: &str, message: &AlbumMessage) -> Album {
 pub(super) fn album_summary(message: &AlbumMessage, group: &str) -> Option<Album> {
     let id = gid(message.gid.as_ref())?;
     Some(Album {
-        id,
+        id: crate::shared::music::domain::id::album(&id),
         name: message.name.clone().unwrap_or_default(),
         artists: album_artists(message),
         cover: album_cover(message),
@@ -183,7 +184,7 @@ pub(super) fn artist_from_message(id: &str, message: &ArtistMessage) -> ArtistVi
     }
 
     ArtistView {
-        id: id.to_owned(),
+        id: crate::shared::music::domain::id::artist(id),
         name: message.name.clone().unwrap_or_default(),
         image: artist_image(message),
         followers: 0,

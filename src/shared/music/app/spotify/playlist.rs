@@ -76,7 +76,7 @@ pub(super) async fn metadata(
     kind: &str,
     id: &str,
 ) -> Result<Vec<u8>, String> {
-    let gid = id_to_hex(id);
+    let gid = id_to_hex(crate::shared::music::domain::id::bare(id));
     let response = authorized(session, "spotify metadata", |access| {
         client
             .get(format!("{SPCLIENT}/metadata/4/{kind}/{gid}"))

@@ -12,8 +12,8 @@ mod tracks;
 
 use std::time::Duration;
 
-pub use catalog::{album, artist, search};
-pub use library::{following, friends, library, liked, user};
+pub use catalog::{album, artist, cached_album, cached_artist, search};
+pub use library::{cached_user, following, friends, library, liked, user};
 pub use login::{Login, login};
 pub use message::enrich_albums;
 pub use playlist::playlist;
@@ -21,6 +21,21 @@ pub use radio::radio;
 
 pub(crate) use playlist::{hex_to_base62, id_to_hex};
 pub use session::Session;
+
+/// The context the Spotify API asks for. The app names a playlist
+/// `{platform}:{type}:{id}`, and the API names the same two things its own
+/// way: the liked songs of a user and a radio around a track.
+pub(crate) fn api_uri(id: &str) -> String {
+    if let Some(user) = id.strip_prefix("spotify:collection:") {
+        return format!("spotify:user:{user}:collection");
+    }
+
+    if let Some(track) = id.strip_prefix("spotify:radio:") {
+        return format!("spotify:radio:track:{track}");
+    }
+
+    id.to_owned()
+}
 
 /// The device id Spotify sees. It survives launches, because a new one registers
 /// a new device on the account.

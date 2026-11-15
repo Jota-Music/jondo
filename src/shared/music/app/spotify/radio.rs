@@ -54,7 +54,7 @@ pub async fn radio(
         .collect();
 
     Ok(Playlist {
-        id: format!("{RADIO}{id}"),
+        id: crate::shared::music::domain::id::playlist(&format!("spotify:radio:{id}")),
         name,
         cover,
         covers,
@@ -69,7 +69,7 @@ pub async fn radio(
 pub(super) fn seed(id: &str) -> String {
     let mut id = id.trim();
     loop {
-        match [RADIO, STATION, TRACK]
+        match [RADIO, STATION, TRACK, "spotify:radio:"]
             .iter()
             .find_map(|prefix| id.strip_prefix(*prefix))
         {

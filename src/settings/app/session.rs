@@ -332,6 +332,7 @@ impl Jondo {
     }
 
     pub fn disconnect_spotify(&mut self, cx: &mut gpui::Context<Self>) {
+        let user = self.settings.read(cx).user.clone();
         self.settings
             .update(cx, |settings, _| settings.spotify = SpotifyState::Off);
         self.settings
@@ -344,7 +345,7 @@ impl Jondo {
             library.friends.clear();
             library.following = Default::default();
         });
-        cache::forget_library();
+        cache::forget_library(&user);
         // The loaded pages belong to the account that just signed out: keeping
         // them would hold its playlists, albums and artists for the session.
         self.catalog.update(cx, |catalog, _| {

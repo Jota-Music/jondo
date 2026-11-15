@@ -9,6 +9,7 @@ use librespot_protocol::metadata::Track as TrackMessage;
 use protobuf::{EnumOrUnknown, Message};
 
 use crate::shared::music::domain::{Song, Source};
+use crate::shared::storage::cache::{self, wire};
 
 use super::session::*;
 use super::*;
@@ -106,6 +107,20 @@ pub(super) async fn tracks(
 ) -> Vec<Song> {
     let unique = dedupe(uris);
     let (mut found, missing) = split(&unique, &crate::shared::kernel::app::mutex::lock(known()));
+
+    // a track resolved on an earlier run answers from its own file, so a
+    // playlist reopened after a restart costs only the ones never seen
+    let mut missing = missing;
+    missing.retain(
+        |uri| match cache::get::<wire::Song>(&format!("spotify/tracks/{uri}")) {
+            Some(song) => {
+                found.insert(uri.clone(), song.into());
+                false
+            }
+            None => true,
+        },
+    );
+
     if missing.is_empty() {
         return reuse(uris, &found);
     }
@@ -120,9 +135,25 @@ pub(super) async fn tracks(
         started.elapsed()
     );
 
-    let mut cache = crate::shared::kernel::app::mutex::lock(known());
-    for (uri, song) in fetched {
-        keep(&mut cache, &uri, &song);
+    let mut resolved = Vec::with_capacity(fetched.len());
+    {
+        let mut cache = crate::shared::kernel::app::mutex::lock(known());
+        for (uri, song) in fetched {
+            keep(&mut cache, &uri, &song);
+            resolved.push((uri, song));
+        }
+    }
+
+    // the files are written outside the lock: a playlist of hundreds of tracks
+    // must not hold the session cache while the disk answers
+    for (uri, song) in resolved {
+        if !song.broken {
+            let _ = cache::put(
+                &format!("spotify/tracks/{uri}"),
+                &wire::Song::from(&song),
+                None,
+            );
+        }
         found.insert(uri, song);
     }
 
@@ -291,11 +322,16 @@ pub(super) fn song_from_track(uri: &str, track: &TrackMessage) -> Song {
         .filter_map(|artist| artist.name.as_deref().and_then(non_empty))
         .collect();
 
-    let album_id = album.gid.as_deref().filter(|gid| !gid.is_empty()).map(hex);
+    let album_id = album
+        .gid
+        .as_deref()
+        .filter(|gid| !gid.is_empty())
+        .map(|gid| crate::shared::music::domain::id::album(&hex(gid)));
     let artist_ids = track
         .artist
         .iter()
-        .filter_map(|artist| artist.gid.as_deref().filter(|gid| !gid.is_empty()).map(hex))
+        .filter_map(|artist| artist.gid.as_deref().filter(|gid| !gid.is_empty()))
+        .map(|gid| crate::shared::music::domain::id::artist(&hex(gid)))
         .collect();
     Song {
         id: format!("spotify:track:{id}"),
@@ -304,6 +340,11 @@ pub(super) fn song_from_track(uri: &str, track: &TrackMessage) -> Song {
         artist_ids,
         album: album.name.clone().unwrap_or_default(),
         album_id,
+        album_year: album
+            .date
+            .as_ref()
+            .map(|date| date.year().max(0) as u32)
+            .unwrap_or_default(),
         playlist_id: None,
         cover,
         duration: (track.duration.unwrap_or(0).max(0) / 1000) as u32,
