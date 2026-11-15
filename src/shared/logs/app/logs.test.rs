@@ -25,6 +25,10 @@ fn a_panic_is_kept_next_to_the_state() {
     let dir = std::env::temp_dir().join(format!("jondo-crash-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     crate::shared::storage::use_home(&dir);
+    // Another test may have pinned the home first, and the first call wins: the
+    // crash goes to whatever the store actually kept, so it is read from there.
+    let dir = crate::shared::storage::dir().expect("a home to write to");
+    let _ = std::fs::remove_file(dir.join("crash.log"));
 
     crash("thread 'main' at src/main.rs:1:1: boom");
     crash("thread 'jondo-store' at src/x.rs:2:2: second");
