@@ -400,7 +400,7 @@ impl Sheet {
                     .absolute()
                     .top(theme::unit(CLOSE_TOP))
                     .right(theme::unit(CLOSE_TOP))
-                    .child(button::icon_button_in(
+                    .child(button::icon_flat_in(
                         Scope::Shell,
                         format!("{id}-close"),
                         icons::X,

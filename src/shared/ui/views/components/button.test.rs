@@ -6,7 +6,7 @@ use gpui::{
     Styled, TestAppContext, Window, div,
 };
 
-use super::{icon_button, icons, theme};
+use super::{icon_flat, icons, theme};
 
 struct Probe {
     hit: Rc<Cell<bool>>,
@@ -15,7 +15,7 @@ struct Probe {
 impl Render for Probe {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         let hit = self.hit.clone();
-        div().size_full().child(icon_button(
+        div().size_full().child(icon_flat(
             "probe",
             icons::PLAY,
             16.0,

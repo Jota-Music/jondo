@@ -60,7 +60,7 @@ pub(super) fn preview_bar(app: &mut Jondo, cx: &mut Context<Jondo>) -> impl Into
                 .child(if pending {
                     button::spinner(16.0, theme::ZINC_300).into_any_element()
                 } else {
-                    button::icon_button_in(
+                    button::icon_flat_in(
                         Scope::Shell,
                         "youtube-preview",
                         if playing { icons::PAUSE } else { icons::PLAY },
@@ -136,7 +136,6 @@ fn soft_button(
                 .justify_center()
                 .rounded(theme::unit(6.0))
                 .cursor_pointer()
-                .bg(theme::alpha(theme::ZINC_800, 0.8 * fade))
                 .child(icons::icon(
                     icon,
                     16.0,

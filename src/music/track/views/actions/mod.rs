@@ -1,4 +1,3 @@
-use gpui::prelude::FluentBuilder as _;
 use gpui::{
     App, Context, Div, ElementId, InteractiveElement, ParentElement, SharedString, Stateful,
     StatefulInteractiveElement, Styled, div,
@@ -177,15 +176,18 @@ pub fn page(
 
 pub fn channel(app: &Jondo, summary: &Follow, id: &str) -> Vec<Item> {
     let followed = app.following().iter().any(|item| item.id == summary.id);
-    let mut items = vec![Item::new(
-        if followed {
-            icons::HEART_FILL
-        } else {
-            icons::HEART
-        },
-        if followed { t("Unfollow") } else { t("Follow") },
-        Command::Follow(summary.clone()),
-    )];
+    let mut items = vec![
+        Item::new(
+            if followed {
+                icons::HEART_FILL
+            } else {
+                icons::HEART
+            },
+            if followed { t("Unfollow") } else { t("Follow") },
+            Command::Follow(summary.clone()),
+        )
+        .on(followed),
+    ];
     if let Some(link) = page_link("channel", id) {
         items.push(Item::new(icons::LINK_2, t("Share"), Command::Copy(link)));
     }
@@ -205,15 +207,22 @@ pub fn playlist(app: &Jondo, playlist: &Playlist, cx: &App) -> Vec<Item> {
 
     if !playlist.is_local() && !playlist.liked() && !playlist.radio() {
         let saved = app.is_saved(&playlist.id);
-        items.push(Item::new(
-            icons::HEART,
-            if saved {
-                t("Unfollow playlist")
-            } else {
-                t("Follow playlist")
-            },
-            Command::PlaylistSave(playlist.clone()),
-        ));
+        items.push(
+            Item::new(
+                if saved {
+                    icons::HEART_FILL
+                } else {
+                    icons::HEART
+                },
+                if saved {
+                    t("Unfollow playlist")
+                } else {
+                    t("Follow playlist")
+                },
+                Command::PlaylistSave(playlist.clone()),
+            )
+            .on(saved),
+        );
     }
 
     if let Some(link) = page_link("playlist", &playlist.id) {
@@ -320,15 +329,22 @@ pub fn shelf(app: &Jondo, playlist: &Playlist, cx: &App) -> Vec<Item> {
 
     if !playlist.is_local() && !playlist.liked() && !playlist.radio() {
         let saved = app.is_saved(&playlist.id);
-        items.push(Item::new(
-            icons::HEART,
-            if saved {
-                t("Unfollow playlist")
-            } else {
-                t("Follow playlist")
-            },
-            Command::PlaylistSave(playlist.clone()),
-        ));
+        items.push(
+            Item::new(
+                if saved {
+                    icons::HEART_FILL
+                } else {
+                    icons::HEART
+                },
+                if saved {
+                    t("Unfollow playlist")
+                } else {
+                    t("Follow playlist")
+                },
+                Command::PlaylistSave(playlist.clone()),
+            )
+            .on(saved),
+        );
     }
 
     if let Some(link) = page_link("playlist", &playlist.id) {
@@ -434,9 +450,6 @@ where
         .justify_center()
         .rounded(theme::unit(6.0))
         .cursor_pointer()
-        .when(fade > 0.0, |this| {
-            this.bg(theme::alpha(theme::ZINC_800, 0.8 * fade))
-        })
         .on_hover({
             let id = id.clone();
             move |on: &bool, window, cx| {
@@ -475,7 +488,10 @@ where
 
 pub fn page_link(page: &str, id: &str) -> Option<String> {
     if page == "channel" {
-        let id = id.strip_prefix("youtube:").unwrap_or(id).trim();
+        let id =
+            crate::shared::music::domain::id::bare(&crate::shared::music::domain::id::channel(id))
+                .trim()
+                .to_owned();
         if id.is_empty() {
             return None;
         }
@@ -493,7 +509,7 @@ pub fn page_link(page: &str, id: &str) -> Option<String> {
         return Some(format!("https://www.youtube.com/playlist?list={list}"));
     }
 
-    let spotify = id.strip_prefix("spotify:").unwrap_or(id);
+    let spotify = crate::shared::music::domain::id::bare(id);
     if spotify.len() < 21
         || spotify.len() > 22
         || !spotify.chars().all(|c| c.is_ascii_alphanumeric())
@@ -506,7 +522,7 @@ pub fn page_link(page: &str, id: &str) -> Option<String> {
 
 fn radio_id(id: &str) -> String {
     let track = id.strip_prefix("spotify:track:").unwrap_or(id);
-    format!("spotify:radio:track:{track}")
+    crate::shared::music::domain::id::playlist(&format!("spotify:radio:{track}"))
 }
 
 fn spotify_link(song: &Song) -> Option<String> {

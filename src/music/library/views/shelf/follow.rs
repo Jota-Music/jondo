@@ -10,11 +10,14 @@ fn follow_menu(local: bool, follow: &Follow) -> Vec<Item> {
         return Vec::new();
     }
 
-    vec![Item::new(
-        icons::HEART,
-        t("Unfollow"),
-        Command::Follow(follow.clone()),
-    )]
+    vec![
+        Item::new(
+            icons::HEART_FILL,
+            t("Unfollow"),
+            Command::Follow(follow.clone()),
+        )
+        .on(true),
+    ]
 }
 
 use gpui::prelude::FluentBuilder as _;
@@ -48,6 +51,7 @@ pub(super) fn follow_tile(
     let follow_click = follow.clone();
     let menu_follow = follow.clone();
     let hold_follow = follow.clone();
+    let accent = app.accent;
     let entity = cx.entity();
     let art = if shown {
         cover::art(
@@ -120,7 +124,7 @@ pub(super) fn follow_tile(
                                     format!("unfollow-{}", follow.id),
                                     icons::HEART_FILL,
                                     14.0,
-                                    theme::DANGER,
+                                    accent,
                                     Some(theme::black(0.7)),
                                     6.0,
                                     cx.listener(move |app, _: &gpui::ClickEvent, _, cx| {
@@ -172,6 +176,7 @@ pub(super) fn follow_row(
     let menu_follow = follow.clone();
     let hold_follow = follow.clone();
     let entity = cx.entity();
+    let accent = app.accent;
     let art = if shown {
         cover::art(
             &mut app.covers,
@@ -249,7 +254,7 @@ pub(super) fn follow_row(
                     format!("unfollow-row-{}", follow.id),
                     icons::HEART_FILL,
                     14.0,
-                    theme::DANGER,
+                    accent,
                     32.0,
                     true,
                     cx.listener(move |app, _: &gpui::ClickEvent, _, cx| {

@@ -25,102 +25,44 @@ fn actionable(element: Stateful<Div>, label: SharedString, enabled: bool) -> Sta
     }
 }
 
-pub fn icon_button(
-    id: impl Into<ElementId>,
-    icon: Icon,
-    size: f32,
-    color: Rgba,
-    button: f32,
-    enabled: bool,
-    on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
-) -> impl IntoElement {
-    icon_button_in(
-        Scope::Both,
-        id,
-        icon,
-        size,
-        color,
-        button,
-        enabled,
-        on_click,
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn icon_button_in(
-    scope: Scope,
-    id: impl Into<ElementId>,
-    icon: Icon,
-    size: f32,
-    color: Rgba,
-    button: f32,
-    enabled: bool,
-    on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
-) -> impl IntoElement {
-    let base = theme::alpha(theme::ZINC_800, 0.0);
-    let lit = theme::alpha(theme::ZINC_800, 0.8);
-    let label = icon.label();
-    let named = label.to_owned().into();
-    actionable(
-        hover::hover_in(
-            scope,
-            id,
-            enabled,
-            move |fade| {
-                div()
-                    .w(theme::unit(button))
-                    .h(theme::unit(button))
-                    .flex()
-                    .flex_none()
-                    .items_center()
-                    .justify_center()
-                    .rounded(theme::unit(6.0))
-                    .cursor_pointer()
-                    .bg(theme::mix(base, lit, fade))
-                    .child(icons::icon(
-                        icon,
-                        size,
-                        theme::mix(color, theme::TEXT, fade),
-                    ))
-            },
-            on_click,
-        ),
-        named,
-        enabled,
-    )
-    .tooltip(move |window, cx| Tooltip::new(label).build(window, cx))
-}
-
-/// The page reload. Same square, border and spinning state on every page that
-/// owns one, so the control never changes place between sources.
+/// The page reload. Same square and spinning state on every page that owns
+/// one, so the control never changes place between sources.
 pub fn reload(
     id: impl Into<ElementId>,
     refreshing: bool,
     on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
     actionable(
-        div()
-            .id(id)
-            .w(theme::unit(40.0))
-            .h(theme::unit(40.0))
-            .flex_none()
-            .flex()
-            .items_center()
-            .justify_center()
-            .rounded(theme::unit(6.0))
-            .border_1()
-            .border_color(theme::BORDER)
-            .bg(theme::SURFACE)
-            .cursor_pointer()
-            .on_click(on_click),
+        hover::hover_in(
+            Scope::Both,
+            id,
+            true,
+            move |fade| {
+                div()
+                    .w(theme::unit(40.0))
+                    .h(theme::unit(40.0))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(theme::unit(6.0))
+                    .child(if refreshing {
+                        spinner(18.0, theme::mix(theme::MUTED, theme::TEXT, fade))
+                            .into_any_element()
+                    } else {
+                        icons::icon(
+                            icons::REFRESH_CW,
+                            18.0,
+                            theme::mix(theme::MUTED, theme::TEXT, fade),
+                        )
+                        .into_any_element()
+                    })
+            },
+            on_click,
+        ),
         t("Reload").to_owned().into(),
         true,
     )
-    .child(if refreshing {
-        spinner(16.0, theme::MUTED).into_any_element()
-    } else {
-        icons::icon(icons::REFRESH_CW, 16.0, theme::MUTED).into_any_element()
-    })
 }
 
 /// The X that dismisses a top banner. Every banner carries the same one, so the
@@ -161,7 +103,7 @@ pub fn dismiss_in(
     .tooltip(|window, cx| Tooltip::new(t("Dismiss")).build(window, cx))
 }
 
-/// An icon with no hover surface of its own, for bars and rows that own the state.
+/// An icon button that carries its hover in the glyph, not a wash behind it.
 pub fn icon_flat(
     id: impl Into<ElementId>,
     icon: Icon,
@@ -302,30 +244,45 @@ pub fn circle_spinner(diameter: f32, icon_size: f32, fill: Rgba, color: Rgba) ->
 }
 
 /// The 32px heart every page header and user header uses to save or follow.
+/// The lit state takes the cover's dominant colour, so the heart agrees with
+/// the rest of the accent in the page.
 pub fn heart(
     id: impl Into<ElementId>,
     on: bool,
+    accent: Rgba,
     on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
 ) -> gpui::Stateful<Div> {
+    // A finger needs the larger target the phone gives every toolbar button.
+    let size = if super::narrow() { 40.0 } else { 32.0 };
+    let glyph = 18.0;
+
+    let (idle, lit) = if on {
+        (accent, theme::mix(accent, theme::rgb(0xffffff), 0.35))
+    } else {
+        (theme::MUTED, theme::TEXT)
+    };
+
     actionable(
-        div()
-            .id(id)
-            .w(theme::unit(32.0))
-            .h(theme::unit(32.0))
-            .flex()
-            .items_center()
-            .justify_center()
-            .rounded(theme::unit(6.0))
-            .border_1()
-            .border_color(theme::ZINC_800)
-            .bg(theme::SURFACE)
-            .cursor_pointer()
-            .on_click(on_click)
-            .child(icons::icon(
-                if on { icons::HEART_FILL } else { icons::HEART },
-                14.0,
-                if on { theme::DANGER } else { theme::MUTED },
-            )),
+        hover::hover_in(
+            Scope::Both,
+            id,
+            true,
+            move |fade| {
+                div()
+                    .w(theme::unit(size))
+                    .h(theme::unit(size))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(theme::unit(6.0))
+                    .child(icons::icon(
+                        if on { icons::HEART_FILL } else { icons::HEART },
+                        glyph,
+                        theme::mix(idle, lit, fade),
+                    ))
+            },
+            on_click,
+        ),
         if on { t("Unsave") } else { t("Save") }.to_owned().into(),
         true,
     )

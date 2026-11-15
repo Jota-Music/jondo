@@ -2,8 +2,8 @@ use super::{page_link, radio_id};
 
 #[test]
 fn radio_ids_are_keyed_by_the_track() {
-    assert_eq!(radio_id("spotify:track:abc"), "spotify:radio:track:abc");
-    assert_eq!(radio_id("abc"), "spotify:radio:track:abc");
+    assert_eq!(radio_id("spotify:track:abc"), "spotify:radio:abc");
+    assert_eq!(radio_id("abc"), "spotify:radio:abc");
 }
 
 #[test]

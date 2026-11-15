@@ -37,6 +37,7 @@ pub(crate) fn show(
     };
 
     let saved = !item.is_local() && !item.liked() && app.is_saved(&item.id);
+    let accent = app.accent;
     let subtitle = if item.liked() {
         String::new()
     } else {
@@ -200,7 +201,7 @@ pub(crate) fn show(
                         format!("list-save-{}", item.id),
                         icons::HEART_FILL,
                         14.0,
-                        theme::DANGER,
+                        accent,
                         None,
                         6.0,
                         save,
@@ -222,6 +223,6 @@ pub(crate) fn show(
                     play,
                 ),
             )
-            .mr(theme::unit(10.0)),
+            .mr(theme::unit(8.0)),
         )
 }

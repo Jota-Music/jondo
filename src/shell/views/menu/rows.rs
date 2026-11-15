@@ -24,6 +24,7 @@ pub(super) fn context_row(
     let label = item.label.clone();
     let icon = item.icon;
     let danger = item.danger;
+    let on = item.on;
     let command = item.command.clone();
     let fade = hover::value(&id, std::time::Instant::now());
     let lit = if active { 1.0 } else { fade };
@@ -54,7 +55,11 @@ pub(super) fn context_row(
             row.child(icons::icon(
                 icon,
                 16.0,
-                if danger { theme::DANGER } else { theme::FAINT },
+                if danger || on {
+                    theme::DANGER
+                } else {
+                    theme::FAINT
+                },
             ))
         })
         .child(text::text(label.clone(), 14.0, color))

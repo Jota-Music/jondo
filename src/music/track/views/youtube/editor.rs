@@ -259,7 +259,6 @@ fn clear(cx: &mut Context<Jondo>, assign: bool) -> impl IntoElement {
                 .justify_center()
                 .rounded(theme::unit(4.0))
                 .cursor_pointer()
-                .bg(theme::alpha(theme::ZINC_800, fade))
                 .child(icons::icon(
                     icons::X,
                     14.0,

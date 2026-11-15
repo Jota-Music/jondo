@@ -9,7 +9,7 @@ use gpui_kit::component::input::InputState;
 use crate::shared::i18n::t;
 use crate::shared::music::domain::Source;
 use crate::shared::music::views::cover::{brand, brand_mono};
-use crate::shared::ui::views::components::field;
+use crate::shared::ui::views::components::{button, field};
 use crate::shared::ui::views::design::icons;
 use crate::shared::ui::views::design::theme;
 use crate::shell::app::{Jondo, SearchType, SpotifyState};
@@ -240,28 +240,22 @@ fn pill(
                 .child(field::input(field)),
         );
     if !query.is_empty() {
-        pill = pill.child(
-            div()
-                .id("search-clear")
-                .w(theme::unit(24.0))
-                .h(theme::unit(24.0))
-                .mr(theme::unit(8.0))
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded(theme::unit(4.0))
-                .cursor_pointer()
-                .hover(|style| style.bg(theme::ZINC_800))
-                .on_click(cx.listener(|app, _: &gpui::ClickEvent, window, cx| {
-                    app.ui.query.clear();
-                    if let Some(field) = app.fields.get("search").cloned() {
-                        field.update(cx, |state, cx| state.set_value("", window, cx));
-                    }
+        pill = pill.child(div().mr(theme::unit(8.0)).child(button::icon_flat(
+            "search-clear",
+            icons::X,
+            14.0,
+            theme::FAINT,
+            24.0,
+            true,
+            cx.listener(|app, _: &gpui::ClickEvent, window, cx| {
+                app.ui.query.clear();
+                if let Some(field) = app.fields.get("search").cloned() {
+                    field.update(cx, |state, cx| state.set_value("", window, cx));
+                }
 
-                    cx.notify();
-                }))
-                .child(icons::icon(icons::X, 14.0, theme::FAINT)),
-        );
+                cx.notify();
+            }),
+        )));
     }
 
     pill

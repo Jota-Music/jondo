@@ -48,6 +48,7 @@ pub fn tile(
 
     let playable = item.track_count > 0 || !item.songs.is_empty();
     let saved = !item.is_local() && !item.liked() && app.is_saved(&item.id);
+    let accent = app.accent;
     let id = item.id.clone();
 
     let play = cx.listener({
@@ -192,7 +193,7 @@ pub fn tile(
                                     format!("shelf-save-{}", item.id),
                                     icons::HEART_FILL,
                                     14.0,
-                                    theme::DANGER,
+                                    accent,
                                     Some(theme::black(0.7)),
                                     6.0,
                                     toggle_saved,

@@ -7,7 +7,7 @@ use gpui::{
 use crate::music::track::views::actions as track_actions;
 use crate::shared::music::domain::Playlist;
 use crate::shared::music::views::cover;
-use crate::shared::ui::views::components::{button, text};
+use crate::shared::ui::views::components::{self, button, text};
 use crate::shared::ui::views::design::icons;
 use crate::shared::ui::views::design::theme;
 use crate::shell::app::{Jondo, Route};
@@ -89,6 +89,7 @@ pub fn show(app: &mut Jondo, cx: &mut Context<Jondo>, header: Header<'_>) -> Any
         actions = actions.child(button::heart(
             "page-save",
             on,
+            app.accent,
             cx.listener(move |app, _: &gpui::ClickEvent, _, cx| {
                 app.toggle_saved(&save, cx);
                 cx.notify();
@@ -101,6 +102,7 @@ pub fn show(app: &mut Jondo, cx: &mut Context<Jondo>, header: Header<'_>) -> Any
         actions = actions.child(button::heart(
             "page-follow",
             on,
+            app.accent,
             cx.listener(move |app, _: &gpui::ClickEvent, _, cx| {
                 app.toggle_follow(&follow, cx);
                 cx.notify();
@@ -121,10 +123,35 @@ pub fn show(app: &mut Jondo, cx: &mut Context<Jondo>, header: Header<'_>) -> Any
         ));
     }
 
+    // Every page holds the same three lines: title, count and link. A record
+    // without one of them keeps an empty line, so the toolbar and the rows
+    // below land at the same height on every page instead of shifting.
+    let line = |text: String| {
+        text::truncated(text, 14.0, theme::white(0.7), theme::Weight::Regular).into_any_element()
+    };
+    let count = line(header.subtitle.unwrap_or_else(|| "\u{00a0}".to_owned()));
+    let link = match header.link {
+        Some((label, route)) => div()
+            .id(format!("page-link-{label}"))
+            .cursor_pointer()
+            .hover(|style| style.underline())
+            .on_click(cx.listener(move |app, _: &gpui::ClickEvent, _, cx| {
+                app.open(route.clone(), cx);
+                cx.notify();
+            }))
+            .child(line(label))
+            .into_any_element(),
+        None => line("\u{00a0}".to_owned()),
+    };
+    let narrow = components::narrow();
+
     div()
         .flex()
         .items_center()
         .gap(theme::unit(16.0))
+        .when(narrow, |head| {
+            head.px(theme::unit(12.0)).pt(theme::unit(16.0))
+        })
         .child(art)
         .child(
             div()
@@ -133,38 +160,15 @@ pub fn show(app: &mut Jondo, cx: &mut Context<Jondo>, header: Header<'_>) -> Any
                 .flex()
                 .flex_col()
                 .gap(theme::unit(4.0))
+                .when(narrow, |lines| lines.h(theme::unit(64.0)).overflow_hidden())
                 .child(text::truncated(
                     header.title.to_owned(),
                     20.0,
                     theme::TEXT,
                     theme::Weight::SemiBold,
                 ))
-                .when_some(header.subtitle, |this, subtitle| {
-                    this.child(text::truncated(
-                        subtitle,
-                        14.0,
-                        theme::white(0.7),
-                        theme::Weight::Regular,
-                    ))
-                })
-                .when_some(header.link, |this, (label, route)| {
-                    this.child(
-                        div()
-                            .id(format!("page-link-{label}"))
-                            .cursor_pointer()
-                            .hover(|style| style.underline())
-                            .on_click(cx.listener(move |app, _: &gpui::ClickEvent, _, cx| {
-                                app.open(route.clone(), cx);
-                                cx.notify();
-                            }))
-                            .child(text::truncated(
-                                label,
-                                14.0,
-                                theme::white(0.7),
-                                theme::Weight::Regular,
-                            )),
-                    )
-                }),
+                .child(count)
+                .child(link),
         )
         .child(actions)
         .into_any_element()
@@ -175,10 +179,14 @@ pub fn show(app: &mut Jondo, cx: &mut Context<Jondo>, header: Header<'_>) -> Any
 /// never starts with a spinner and then swaps a whole header in. The caller
 /// appends the actions it will keep once the data arrives.
 pub fn pending(size: f32, radius: f32) -> Div {
+    let narrow = components::narrow();
     div()
         .flex()
         .items_center()
         .gap(theme::unit(16.0))
+        .when(narrow, |head| {
+            head.px(theme::unit(12.0)).pt(theme::unit(16.0))
+        })
         .child(cover::shimmer(size, size, radius))
         .child(
             div()
@@ -186,21 +194,13 @@ pub fn pending(size: f32, radius: f32) -> Div {
                 .min_w(theme::unit(120.0))
                 .flex()
                 .flex_col()
-                .gap(theme::unit(8.0))
+                .gap(theme::unit(4.0))
                 .overflow_hidden()
-                .child(cover::shimmer(180.0, 20.0, 4.0))
-                .child(cover::shimmer(110.0, 14.0, 4.0)),
+                .when(narrow, |lines| lines.h(theme::unit(64.0)))
+                .child(cover::shimmer(180.0, text::line(20.0), 4.0))
+                .child(cover::shimmer(110.0, text::line(14.0), 4.0))
+                .child(cover::shimmer(80.0, text::line(14.0), 4.0)),
         )
-}
-
-/// A page that is still loading: the same centred spinner every other view
-/// uses, so no page invents its own loading treatment.
-pub fn loading() -> AnyElement {
-    div()
-        .size_full()
-        .flex()
-        .child(crate::shared::ui::views::components::loading::spinner())
-        .into_any_element()
 }
 
 pub fn panel(inner: impl IntoElement) -> AnyElement {

@@ -17,8 +17,8 @@ pub(super) fn empty(app: &mut Jondo, cx: &mut Context<Jondo>, scope: Scope) -> A
         return match app.ui.following_filter {
             Filter::All => hint::hint(
                 Hint {
-                    icon: icons::HEART,
-                    tint: theme::rgb(0xd946ef),
+                    icon: icons::HEART_FILL,
+                    tint: theme::DANGER,
                     title: t("Nothing to see yet"),
                     body: t(
                         "Follow a Spotify profile or a YouTube channel and it will show up here.",
