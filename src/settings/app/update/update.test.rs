@@ -19,17 +19,28 @@ fn an_appimage_is_picked_for_this_arch() {
 }
 
 #[test]
-fn an_apk_is_picked_for_android() {
+fn an_apk_is_picked_for_this_arch() {
     let release = serde_json::json!({
         "assets": [
-            {"name": "jondo.apk.sha256", "browser_download_url": "https://example/sum"},
-            {"name": "jondo.apk", "browser_download_url": "https://example/apk"}
+            {"name": "SHA256SUMS", "browser_download_url": "https://example/sums"},
+            {"name": "jondo-arm64-v8a.apk", "browser_download_url": "https://example/jondo-arm64-v8a.apk"},
+            {"name": "jondo-x86_64.apk", "browser_download_url": "https://example/jondo-x86_64.apk"}
         ]
     });
+    let expected = package();
     assert_eq!(
         asset(&release, Channel::Android),
-        Some(("jondo.apk".to_owned(), "https://example/apk".to_owned()))
+        Some((expected.to_owned(), format!("https://example/{expected}")))
     );
+}
+
+/// The package this processor runs, the way the release names it.
+fn package() -> &'static str {
+    match std::env::consts::ARCH {
+        "aarch64" => "jondo-arm64-v8a.apk",
+        "x86_64" => "jondo-x86_64.apk",
+        other => panic!("no Android package for {other}"),
+    }
 }
 
 #[test]
@@ -38,6 +49,25 @@ fn a_channel_without_self_update_picks_nothing() {
         "assets": [{"name": "jondo.apk", "browser_download_url": "https://example/apk"}]
     });
     assert_eq!(asset(&release, Channel::External), None);
+}
+
+#[test]
+fn a_macos_archive_is_picked_for_this_arch() {
+    let release = serde_json::json!({
+        "assets": [
+            {"name": "jondo-macos-aarch64.zip", "browser_download_url": "https://example/jondo-macos-aarch64.zip"},
+            {"name": "jondo-macos-x86_64.zip", "browser_download_url": "https://example/jondo-macos-x86_64.zip"}
+        ]
+    });
+    let expected = match std::env::consts::ARCH {
+        "aarch64" => "jondo-macos-aarch64.zip",
+        "x86_64" => "jondo-macos-x86_64.zip",
+        other => panic!("no macOS archive for {other}"),
+    };
+    assert_eq!(
+        asset(&release, Channel::Macos),
+        Some((expected.to_owned(), format!("https://example/{expected}")))
+    );
 }
 
 #[test]
@@ -51,6 +81,19 @@ fn another_apps_assets_are_never_picked() {
     });
     assert_eq!(asset(&release, Channel::Android), None);
     assert_eq!(asset(&release, Channel::AppImage), None);
+}
+
+#[test]
+fn the_package_of_another_architecture_is_not_picked() {
+    let release = serde_json::json!({
+        "assets": [
+            {"name": "jondo-arm64-v8a.apk", "browser_download_url": "https://example/arm64"},
+            {"name": "jondo-x86_64.apk", "browser_download_url": "https://example/x86"}
+        ]
+    });
+    let (name, _) = asset(&release, Channel::Android).expect("a package for this arch");
+    assert_eq!(name, package());
+    assert_ne!(name, "jondo.apk");
 }
 
 #[test]

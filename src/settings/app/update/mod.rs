@@ -121,8 +121,19 @@ fn matches(channel: Channel, name: &str) -> bool {
                 && name.ends_with(".appimage")
                 && contains_arch(&name, std::env::consts::ARCH)
         }
-        Channel::Android => name == "jondo.apk",
-        Channel::Macos => name == "jondo-macos.zip",
+        // One package per architecture, so the device takes the one its
+        // processor can run.
+        Channel::Android => {
+            name.starts_with("jondo-")
+                && name.ends_with(".apk")
+                && contains_arch(&name, std::env::consts::ARCH)
+        }
+        // One archive per processor, so the update carries the code once.
+        Channel::Macos => {
+            name.starts_with("jondo-macos-")
+                && name.ends_with(".zip")
+                && contains_arch(&name, std::env::consts::ARCH)
+        }
         Channel::Windows => name == "jondo-windows-amd64-installer.exe",
         Channel::External => false,
     }
