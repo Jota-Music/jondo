@@ -10,6 +10,8 @@ use crate::shared::kernel::app::clock::{now, now_ms};
 use crate::shared::storage::domain::*;
 
 use super::file::*;
+use super::links;
+use super::queue;
 
 /// The closing path writes on the UI thread while the writer thread may be
 /// writing the same temporary file, and whichever renames second loses the
@@ -19,6 +21,7 @@ static WRITING: Mutex<()> = Mutex::new(());
 
 impl Store {
     pub fn load() -> Self {
+        crate::shared::storage::cache::start();
         match path() {
             Some(path) => Self::load_from(&path),
             None => Self::default(),
@@ -33,10 +36,29 @@ impl Store {
             return Self::default();
         };
 
-        match serde_json::from_str::<Snapshot>(&text) {
+        match Snapshot::from_text(&text) {
             Ok(snapshot) => {
+                // the picks left the state for the cache, one file per song. A
+                // file written before the move still carries them, so they move
+                // over and the next save drops them from the state.
+                let picks = snapshot.links();
                 let mut store = Self::from(snapshot);
                 store.normalize();
+                links::migrate(picks);
+
+                // the queue left the state file for the cache folder. A file
+                // written before the move still carries it, so it moves over.
+                match queue::load(path) {
+                    Some((songs, index)) => {
+                        store.queue = songs;
+                        store.queue_index = index;
+                    }
+                    None if !store.queue.is_empty() => {
+                        queue::save(path, &store.queue, store.queue_index);
+                    }
+                    None => {}
+                }
+
                 store
             }
             Err(error) => {
@@ -58,9 +80,47 @@ impl Store {
         }
     }
 
-    /// Brings the local follow list to the key format Jota stores, so a follow
-    /// written by either app reads the same here.
+    /// Brings the ids the file holds to the names the app writes now, and the
+    /// local follow list to the key format Jota stores, so a follow written by
+    /// either app reads the same here.
     pub(super) fn normalize(&mut self) {
+        for song in self.queue.iter_mut() {
+            song.normalize();
+        }
+
+        for playlist in self.playlists.iter_mut() {
+            playlist.id = crate::shared::music::domain::id::playlist(&playlist.id);
+            for song in playlist.songs.iter_mut() {
+                song.normalize();
+            }
+        }
+
+        for playlist in self.saved.iter_mut() {
+            playlist.normalize();
+        }
+
+        for id in self.order.iter_mut() {
+            *id = crate::shared::music::domain::id::playlist(id);
+        }
+
+        for id in self.room_order.iter_mut() {
+            *id = crate::shared::music::domain::id::room(id);
+        }
+
+        for room in self.rooms.iter_mut() {
+            room.id = crate::shared::music::domain::id::room(&room.id);
+        }
+
+        for (id, at) in std::mem::take(&mut self.playlist_graves) {
+            self.playlist_graves
+                .insert(crate::shared::music::domain::id::playlist(&id), at);
+        }
+
+        for (id, at) in std::mem::take(&mut self.saved_graves) {
+            self.saved_graves
+                .insert(crate::shared::music::domain::id::playlist(&id), at);
+        }
+
         if self.follows.is_empty() {
             return;
         }
@@ -120,12 +180,16 @@ impl Store {
             return false;
         }
 
+        let video = crate::shared::music::domain::id::video(video);
+
         if video.is_empty() {
-            self.youtube_picks.remove(id);
-            return self.youtube_links.remove(id).is_some();
+            let pinned = self.youtube_picks.remove(id);
+            let picked = links::read(id).is_some();
+            links::forget(id);
+            return pinned || picked;
         }
 
-        if id.strip_prefix("youtube:") == Some(video) {
+        if crate::shared::music::domain::id::video(id) == video {
             return false;
         }
 
@@ -134,8 +198,8 @@ impl Store {
         }
 
         let mut changed = false;
-        if self.youtube_links.get(id).map(String::as_str) != Some(video) {
-            self.youtube_links.insert(id.to_owned(), video.to_owned());
+        if links::read(id).as_deref() != Some(video.as_str()) {
+            links::write(id, &video);
             changed = true;
         }
 
@@ -165,6 +229,14 @@ impl Store {
             return;
         };
 
+        self.write_to(&path);
+    }
+
+    pub(super) fn write_to(&self, path: &Path) {
+        // the queue is the big one and it lives in the cache folder, so the
+        // state file is written without it
+        queue::save(path, &self.queue, self.queue_index);
+
         let _writing = WRITING.lock().unwrap_or_else(PoisonError::into_inner);
 
         if let Some(parent) = path.parent()
@@ -188,7 +260,7 @@ impl Store {
                 .map_err(std::io::Error::other)?;
             writer.flush()?;
             writer.get_ref().sync_all()?;
-            fs::rename(&temp, &path)
+            fs::rename(&temp, path)
         };
 
         if let Err(error) = write() {
@@ -206,7 +278,7 @@ impl Store {
     }
 
     pub fn create_playlist(&mut self, name: &str) -> String {
-        let id = crate::shared::music::domain::local_id();
+        let id = crate::shared::music::domain::local_playlist_id();
         self.playlists.insert(
             0,
             LocalPlaylist {

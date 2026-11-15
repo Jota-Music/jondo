@@ -3,6 +3,7 @@ use crate::shared::i18n::t;
 use futures_util::StreamExt;
 
 use crate::shared::music::domain::{Playlist, Song, Source};
+use crate::shared::storage::links;
 use crate::shared::youtube::candidates;
 use crate::shell::app::{Event, Jondo};
 
@@ -189,7 +190,7 @@ impl Jondo {
             return;
         }
 
-        if self.store.youtube_links.contains_key(&song.id) || !self.probes.insert(song.id.clone()) {
+        if links::read(&song.id).is_some() || !self.probes.insert(song.id.clone()) {
             return;
         }
 
@@ -231,7 +232,7 @@ impl Jondo {
                 .video()
                 .filter(|id| !id.is_empty())
                 .map(str::to_owned)
-                .or_else(|| self.store.youtube_links.get(&song.id).cloned());
+                .or_else(|| links::read(&song.id));
             if let Some(video) = video
                 && !videos.contains(&video)
                 && self.youtube.cached(&video).is_none()
@@ -335,7 +336,7 @@ impl Jondo {
         let token = self.play_token;
 
         let youtube = self.youtube.clone();
-        let known = self.store.youtube_links.get(&song.id).cloned();
+        let known = links::read(&song.id);
         self.jobs.spawn(async move {
             let (resolved, result) = resolve(youtube, song, known, fresh).await;
             Event::YouTubeStream {

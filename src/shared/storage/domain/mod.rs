@@ -95,6 +95,9 @@ pub struct Store {
     pub repeat: String,
     pub compact: bool,
     pub always_on_top: bool,
+    /// The ambient glow behind the content. On unless it was turned off: the
+    /// app looks like this out of the box, so a fresh install needs no setup.
+    pub backdrop: bool,
     pub order: Vec<String>,
     pub follows: Vec<crate::shared::music::domain::Follow>,
     pub saved: Vec<Playlist>,
@@ -131,7 +134,6 @@ pub struct Store {
     pub pause_on_disconnect: bool,
     pub pause_on_focus: bool,
     pub saved_at: BTreeMap<String, i64>,
-    pub youtube_links: BTreeMap<String, String>,
     pub youtube_picks: BTreeSet<String>,
 }
 
@@ -163,6 +165,7 @@ impl Default for Store {
             repeat: String::new(),
             compact: false,
             always_on_top: false,
+            backdrop: true,
             order: Vec::new(),
             follows: Vec::new(),
             saved: Vec::new(),
@@ -186,7 +189,6 @@ impl Default for Store {
             saved_graves: BTreeMap::new(),
             follows_at: BTreeMap::new(),
             saved_at: BTreeMap::new(),
-            youtube_links: BTreeMap::new(),
             youtube_picks: BTreeSet::new(),
             locale: String::new(),
             discord: false,

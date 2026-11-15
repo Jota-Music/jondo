@@ -1,48 +1,43 @@
-use std::fs;
-use std::path::{Path, PathBuf};
-
-use serde::{Deserialize, Serialize};
-
-use crate::shared::kernel::app::clock::now;
+use crate::shared::kernel::app::clock::now_ms;
 use crate::shared::music::domain::Playlist;
+use crate::shared::storage::cache::{self, wire};
 
-const LIMIT: usize = 48;
-const REFRESH: u64 = 15 * 60;
+/// How long a cached playlist paints before the source is asked again.
+const REFRESH: i64 = 15 * 60 * 1000;
 
-#[derive(Serialize, Deserialize)]
-struct Entry {
-    saved: u64,
-    playlist: Playlist,
+/// Where a user context is cached. A context has no revision to compare, so
+/// Jota keeps the URI the source named and reads it back as it is. Liked Songs
+/// is the one that matters here.
+fn context(id: &str) -> Option<String> {
+    let user = id.strip_prefix("spotify:collection:")?;
+    Some(format!("spotify/contexts/spotify:user:{user}:collection"))
 }
 
-#[derive(Serialize, Deserialize)]
-struct Library {
-    user: String,
-    playlists: Vec<Playlist>,
+/// Where a playlist is cached, or nothing when it is a radio: Jota recomputes
+/// a radio on every visit and never stores it.
+fn name(id: &str) -> Option<String> {
+    if id.starts_with("spotify:radio:") || context(id).is_some() {
+        return None;
+    }
+
+    Some(format!("spotify/playlists/{id}"))
 }
 
-use std::time::SystemTime;
-
-fn root() -> Option<PathBuf> {
-    crate::shared::storage::dir()
-}
-
-fn dir() -> Option<PathBuf> {
-    Some(root()?.join("playlists"))
-}
-
-fn path(id: &str) -> Option<PathBuf> {
-    Some(dir()?.join(format!("{}.json", id.replace(':', "_"))))
-}
-
-fn library_path() -> Option<PathBuf> {
-    Some(root()?.join("library.json"))
+/// Where the playlists an account owns are cached. The user is part of the
+/// name: two accounts on one device are two libraries.
+fn library_name(user: &str) -> String {
+    format!("spotify/library/{user}")
 }
 
 pub fn get(id: &str) -> Option<(Playlist, bool)> {
-    let entry: Entry = serde_json::from_str(&fs::read_to_string(path(id)?).ok()?).ok()?;
-    let fresh = now().saturating_sub(entry.saved) < REFRESH;
-    Some((entry.playlist, fresh))
+    if let Some(context) = context(id) {
+        let playlist = cache::get::<wire::Playlist>(&context)?;
+        return Some((playlist.into_domain(id), true));
+    }
+
+    let (cached, saved) = cache::get_with_meta::<wire::Revisioned>(&name(id)?)?;
+    let playlist = cached.playlist.into_domain(id);
+    Some((playlist, now_ms().saturating_sub(saved) < REFRESH))
 }
 
 pub fn put(playlist: &Playlist) {
@@ -50,27 +45,28 @@ pub fn put(playlist: &Playlist) {
         return;
     }
 
-    let Some(dir) = dir() else {
+    if let Some(context) = context(&playlist.id) {
+        if let Err(error) = cache::put(&context, &wire::Playlist::from(playlist), None) {
+            log::warn!("cannot cache context {}: {error}", playlist.id);
+        }
         return;
-    };
-
-    let entry = Entry {
-        saved: now(),
-        playlist: playlist.clone(),
-    };
-
-    let Ok(text) = serde_json::to_string(&entry) else {
-        log::warn!("cannot encode playlist {}", playlist.id);
-        return;
-    };
-
-    let Some(path) = path(&playlist.id) else {
-        return;
-    };
-
-    if write(&path, text) {
-        trim(&dir, LIMIT);
     }
+
+    let Some(name) = name(&playlist.id) else {
+        return;
+    };
+
+    let entry = wire::Revisioned {
+        revision: String::new(),
+        playlist: wire::Playlist::from(playlist),
+    };
+
+    if let Err(error) = cache::put(&name, &entry, None) {
+        log::warn!("cannot cache playlist {}: {error}", playlist.id);
+        return;
+    }
+
+    cache::trim("spotify/playlists", Some("json"), cache::PLAYLIST_LIMIT);
 }
 
 pub fn library(user: &str) -> Vec<Playlist> {
@@ -78,18 +74,14 @@ pub fn library(user: &str) -> Vec<Playlist> {
         return Vec::new();
     }
 
-    let Some(path) = library_path() else {
+    let Some(summaries) = cache::get::<Vec<wire::Summary>>(&library_name(user)) else {
         return Vec::new();
     };
 
-    let Ok(text) = fs::read_to_string(path) else {
-        return Vec::new();
-    };
-
-    match serde_json::from_str::<Library>(&text) {
-        Ok(library) if library.user == user => library.playlists,
-        _ => Vec::new(),
-    }
+    summaries
+        .into_iter()
+        .map(wire::Summary::into_domain)
+        .collect()
 }
 
 pub fn save_library(user: &str, playlists: &[Playlist]) {
@@ -97,58 +89,19 @@ pub fn save_library(user: &str, playlists: &[Playlist]) {
         return;
     }
 
-    let library = Library {
-        user: user.to_owned(),
-        playlists: playlists.to_vec(),
-    };
-
-    let Ok(text) = serde_json::to_string(&library) else {
-        return;
-    };
-
-    if let Some(path) = library_path() {
-        write(&path, text);
+    let summaries: Vec<wire::Summary> = playlists.iter().map(wire::Summary::from).collect();
+    if let Err(error) = cache::put(&library_name(user), &summaries, None) {
+        log::warn!("cannot cache the library: {error}");
     }
 }
 
-pub fn forget_library() {
-    if let Some(path) = library_path() {
-        let _ = fs::remove_file(path);
-    }
-}
-
-fn write(path: &Path, text: String) -> bool {
-    if let Some(parent) = path.parent()
-        && let Err(error) = fs::create_dir_all(parent)
-    {
-        log::warn!("cannot create {}: {error}", parent.display());
-        return false;
-    }
-
-    if let Err(error) = fs::write(path, text) {
-        log::warn!("cannot save {}: {error}", path.display());
-        return false;
-    }
-
-    true
-}
-
-pub fn trim(dir: &Path, limit: usize) {
-    let Ok(entries) = fs::read_dir(dir) else {
-        return;
-    };
-
-    let mut files: Vec<(SystemTime, PathBuf)> = entries
-        .flatten()
-        .filter_map(|entry| Some((entry.metadata().ok()?.modified().ok()?, entry.path())))
-        .collect();
-    if files.len() <= limit {
+pub fn forget_library(user: &str) {
+    if user.is_empty() {
         return;
     }
 
-    files.sort_by_key(|entry| std::cmp::Reverse(entry.0));
-    for (_, path) in files.drain(limit..) {
-        let _ = fs::remove_file(path);
+    if let Err(error) = cache::forget(&library_name(user)) {
+        log::warn!("cannot forget the library: {error}");
     }
 }
 

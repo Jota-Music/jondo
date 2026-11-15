@@ -3,6 +3,7 @@ use std::time::{Duration, Instant};
 use crate::music::rooms::wire;
 use crate::music::rooms::{self, Role, Status};
 use crate::shared::music::domain::Song;
+use crate::shared::storage::links;
 use crate::shared::ui::views::design::color::hex;
 
 use crate::music::player::{parse_repeat, repeat_name, resolve};
@@ -259,7 +260,7 @@ impl Jondo {
         self.rooms.update(cx, |rooms, _| rooms.load_token += 1);
         let token = self.rooms.read(cx).load_token;
         let youtube = self.youtube.clone();
-        let known = self.store.youtube_links.get(&song.id).cloned();
+        let known = links::read(&song.id);
         self.jobs.spawn(async move {
             let (song, result) = resolve(youtube, song, known, false).await;
             Event::Room(Box::new(rooms::Event::Prepared {
@@ -617,7 +618,7 @@ impl Jondo {
         let position_ms = state.position_ms;
         let at = state.at.unwrap_or(at);
         let youtube = self.youtube.clone();
-        let known = self.store.youtube_links.get(&song.id).cloned();
+        let known = links::read(&song.id);
         self.jobs.spawn(async move {
             let (song, result) = resolve(youtube, song, known, false).await;
             Event::Room(Box::new(rooms::Event::Snapshot {
