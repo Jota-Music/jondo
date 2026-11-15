@@ -78,6 +78,10 @@ pub struct Playlist {
     pub owner: String,
     #[serde(rename = "ownerId", default, skip_serializing_if = "String::is_empty")]
     pub owner_id: String,
+    /// The count the source reported, which can be larger than the songs that
+    /// resolved. Zero on a file written before it was kept.
+    #[serde(default)]
+    pub track_count: u32,
     pub songs: Vec<Song>,
 }
 
@@ -379,6 +383,7 @@ impl From<&music::Playlist> for Playlist {
             cover: playlist.cover.clone().unwrap_or_default(),
             owner: playlist.owner.clone().unwrap_or_default(),
             owner_id: playlist.owner_id.clone().unwrap_or_default(),
+            track_count: playlist.track_count,
             songs: playlist.songs.iter().map(Song::from).collect(),
         }
     }
@@ -404,7 +409,11 @@ impl Playlist {
             source,
             owner: (!self.owner.is_empty()).then_some(self.owner),
             owner_id: (!self.owner_id.is_empty()).then_some(self.owner_id),
-            track_count: songs.len() as u32,
+            track_count: if self.track_count > 0 {
+                self.track_count
+            } else {
+                songs.len() as u32
+            },
             songs,
             loading: false,
         }

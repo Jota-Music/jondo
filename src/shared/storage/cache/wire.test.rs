@@ -92,3 +92,26 @@ fn a_playlist_loses_only_what_jota_does_not_cache() {
     );
     assert_eq!(back.track_count, 1);
 }
+
+/// The header counts what the source says the playlist holds, which is more
+/// than the songs that resolve: an unavailable track still takes a slot.
+#[test]
+fn a_cached_playlist_keeps_the_count_its_source_reported() {
+    let playlist = music::Playlist {
+        id: "spotify:playlist:one".to_owned(),
+        name: "Mix".to_owned(),
+        track_count: 12,
+        songs: vec![spotify_song()],
+        ..Default::default()
+    };
+
+    let back = Playlist::from(&playlist).into_domain(&playlist.id);
+    assert_eq!(back.track_count, 12);
+
+    // a file written before the count was kept falls back to the songs
+    let old = Playlist {
+        track_count: 0,
+        ..Playlist::from(&playlist)
+    };
+    assert_eq!(old.into_domain(&playlist.id).track_count, 1);
+}
