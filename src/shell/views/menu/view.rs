@@ -26,6 +26,8 @@ pub struct Menu {
     pub index: Option<usize>,
     pub origin: Option<ElementId>,
     pub opened: Instant,
+    /// A press began outside the panel, so its release dismisses this menu.
+    pub away: bool,
     pub items: Vec<Item>,
 }
 
@@ -47,6 +49,7 @@ impl Menu {
             index: None,
             origin: None,
             opened: Instant::now(),
+            away: false,
             items,
         }
     }
@@ -61,6 +64,7 @@ impl Menu {
             index: items.iter().position(|item| item.checked),
             origin: None,
             opened: Instant::now(),
+            away: false,
             items,
         }
     }
@@ -228,8 +232,12 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> gp
         .opacity(fade)
         .shadow_xl()
         .role(gpui::Role::Menu)
-        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-        .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation());
+        .occlude()
+        .on_mouse_down_out(press(cx, menu.stamp, true))
+        .on_mouse_down(MouseButton::Left, press(cx, menu.stamp, false))
+        .on_mouse_down(MouseButton::Right, press(cx, menu.stamp, false))
+        .on_mouse_up_out(MouseButton::Left, release(cx, menu.stamp))
+        .on_mouse_up_out(MouseButton::Right, release(cx, menu.stamp));
 
     if menu.context {
         panel = panel.py(theme::unit(4.0));
@@ -269,25 +277,56 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> gp
         });
     }
 
-    let dismiss = cx.listener(|app, _: &gpui::MouseDownEvent, _, cx| {
-        app.close_menu();
-        app.notify_shell(cx);
-    });
+    div().absolute().inset_0().child(panel).into_any_element()
+}
 
-    div()
-        .absolute()
-        .inset_0()
-        .occlude()
-        .on_mouse_down(MouseButton::Left, dismiss)
-        .on_mouse_down(
-            MouseButton::Right,
-            cx.listener(|app, _: &gpui::MouseDownEvent, _, cx| {
+/// Marks whether the press that is about to become a click started away from
+/// the panel. A press on the panel keeps the menu open and swallows its own
+/// event; a press away is dismissed by its release, once the click has had a
+/// chance to open another menu in its place.
+fn press(
+    cx: &Context<Jondo>,
+    stamp: u64,
+    away: bool,
+) -> impl Fn(&gpui::MouseDownEvent, &mut Window, &mut gpui::App) + 'static {
+    cx.listener(move |app, _: &gpui::MouseDownEvent, _, cx| {
+        if let Some(menu) = app.menu.as_mut().filter(|menu| menu.stamp == stamp) {
+            menu.away = away;
+        }
+
+        if !away {
+            cx.stop_propagation();
+        }
+    })
+}
+
+/// The menu is dismissed on release, after the click listeners of that same
+/// release have run: a press on another trigger replaces the open menu in one
+/// click instead of closing it first and needing a second one.
+fn release(
+    cx: &Context<Jondo>,
+    stamp: u64,
+) -> impl Fn(&gpui::MouseUpEvent, &mut Window, &mut gpui::App) + 'static {
+    cx.listener(move |app, _: &gpui::MouseUpEvent, window, cx| {
+        if !app
+            .menu
+            .as_ref()
+            .is_some_and(|menu| menu.stamp == stamp && menu.away)
+        {
+            return;
+        }
+
+        cx.defer_in(window, move |app, _, cx| {
+            if app
+                .menu
+                .as_ref()
+                .is_some_and(|menu| menu.stamp == stamp && menu.away)
+            {
                 app.close_menu();
                 app.notify_shell(cx);
-            }),
-        )
-        .child(panel)
-        .into_any_element()
+            }
+        });
+    })
 }
 
 pub(super) fn mobile(window: &Window) -> bool {
