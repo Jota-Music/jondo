@@ -10,6 +10,7 @@ mod stream;
 #[path = "youtube.test.rs"]
 mod tests;
 
+pub use channel::cached_channel;
 pub use client::Youtube;
 pub use client::{Stream, Video};
 pub use cookies::{full, parse_cookies, same};

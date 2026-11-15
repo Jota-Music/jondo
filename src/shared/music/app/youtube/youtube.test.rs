@@ -2,6 +2,8 @@ use std::collections::HashSet;
 
 use serde_json::{Value, json};
 
+use crate::shared::music::domain::Video;
+
 #[test]
 fn cookies_are_read_from_a_jar_and_a_header() {
     let jar = "# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tSAPISID\tabc\n.youtube.com\tTRUE\t/\tTRUE\t0\t__Secure-3PSID\tdef\n";
@@ -72,6 +74,28 @@ fn the_library_reads_lockup_cards_and_skips_videos() {
     );
 }
 
+/// A video resolved once answers from the song it stored, so pasting the same
+/// link again costs no round trip and the file is Jota's `youtube/tracks/<id>`.
+#[test]
+fn a_video_rebuilds_from_the_song_it_cached() {
+    let video = Video {
+        id: "youtube:track:abc".to_owned(),
+        title: "A video".to_owned(),
+        author: "Lofi Girl".to_owned(),
+        channel: Some("youtube:channel:UClofi".to_owned()),
+        duration: 0,
+        official: false,
+    };
+
+    let back = super::stream::video_from_song("abc", video.song());
+
+    assert_eq!(back.id, video.id);
+    assert_eq!(back.title, video.title);
+    assert_eq!(back.author, video.author);
+    assert_eq!(back.channel, video.channel);
+    assert_eq!(back.duration, video.duration);
+}
+
 #[test]
 fn an_oembed_author_url_names_its_channel() {
     assert_eq!(
@@ -100,7 +124,7 @@ fn a_playlist_video_keeps_the_channel_it_links_to() {
     let mut seen = HashSet::new();
     let song = playlist_song(&renderer, "", "My mix", &mut seen).unwrap();
     assert_eq!(song.artists, vec!["Lofi Girl".to_owned()]);
-    assert_eq!(song.artist_ids, vec!["UClofi".to_owned()]);
+    assert_eq!(song.artist_ids, vec!["youtube:channel:UClofi".to_owned()]);
     assert_eq!(song.album, "My mix");
 }
 
@@ -128,7 +152,10 @@ fn a_lockup_video_keeps_the_channel_buried_in_its_metadata() {
     let mut seen = HashSet::new();
     let song = lockup_song(&view, "", "My mix", &mut seen).unwrap();
     assert_eq!(song.album, "My mix");
-    assert_eq!(song.artist_ids, vec!["UCq19-LqvG35A-30oyAiPiqA".to_owned()]);
+    assert_eq!(
+        song.artist_ids,
+        vec!["youtube:channel:UCq19-LqvG35A-30oyAiPiqA".to_owned()]
+    );
 }
 
 #[test]
@@ -144,7 +171,10 @@ fn a_channel_page_video_links_back_to_its_channel() {
     let mut seen = HashSet::new();
     collect_videos(&value, "Lofi Girl", "UClofi", &mut videos, &mut seen);
     assert_eq!(videos.len(), 1);
-    assert_eq!(videos[0].song().artist_ids, vec!["UClofi".to_owned()]);
+    assert_eq!(
+        videos[0].song().artist_ids,
+        vec!["youtube:channel:UClofi".to_owned()]
+    );
 }
 
 #[test]
@@ -167,8 +197,11 @@ fn a_search_video_keeps_the_channel_it_links_to() {
 
     let videos = extract_videos(&value);
     assert_eq!(videos.len(), 1);
-    assert_eq!(videos[0].channel.as_deref(), Some("UClofi"));
-    assert_eq!(videos[0].song().artist_ids, vec!["UClofi".to_owned()]);
+    assert_eq!(videos[0].channel.as_deref(), Some("youtube:channel:UClofi"));
+    assert_eq!(
+        videos[0].song().artist_ids,
+        vec!["youtube:channel:UClofi".to_owned()]
+    );
 }
 
 #[test]
@@ -185,6 +218,115 @@ fn audio_prefers_the_original_track_over_auto_dubs() {
     });
 
     assert_eq!(pick_audio(&value).unwrap().0, "https://x/original");
+}
+
+#[test]
+fn audio_drops_the_range_youtube_pins_into_a_stream_url() {
+    let value = json!({
+        "streamingData": {"adaptiveFormats": [
+            {"itag": 140, "mimeType": "audio/mp4; codecs=\"mp4a.40.2\"",
+             "url": "https://x/stream?expire=1&range=0-99999&dur=263.5&mime=audio%2Fmp4&sig=abc%3D%3D"}
+        ]}
+    });
+
+    let (url, duration) = pick_audio(&value).unwrap();
+    assert_eq!(
+        url,
+        "https://x/stream?expire=1&dur=263.5&mime=audio%2Fmp4&sig=abc%3D%3D"
+    );
+    assert_eq!(duration, 263.5);
+}
+
+/// A range server that stalls the way a URL signed for its opening chunk does:
+/// everything from `limit` on is refused.
+fn ranged(limit: Option<u64>) -> String {
+    use std::io::{BufRead, BufReader, Write};
+
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("range server");
+    let url = format!("http://{}", listener.local_addr().unwrap());
+
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(stream) = stream else { continue };
+            std::thread::spawn(move || {
+                let Ok(mut writer) = stream.try_clone() else {
+                    return;
+                };
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let mut line = String::new();
+                reader.read_line(&mut line).ok();
+
+                let (mut start, mut end) = (0u64, 0u64);
+                loop {
+                    let mut header = String::new();
+                    if reader.read_line(&mut header).is_err() {
+                        return;
+                    }
+                    let header = header.trim_end().to_ascii_lowercase();
+                    if header.is_empty() {
+                        break;
+                    }
+                    if let Some(value) = header.strip_prefix("range: bytes=")
+                        && let Some((a, b)) = value.split_once('-')
+                    {
+                        start = a.parse().unwrap();
+                        end = b.parse().unwrap();
+                    }
+                }
+
+                if limit.is_some_and(|limit| start >= limit) {
+                    writer
+                        .write_all(b"HTTP/1.1 403 Forbidden\r\ncontent-length: 0\r\nconnection: close\r\n\r\n")
+                        .ok();
+                    return;
+                }
+
+                let length = end - start + 1;
+                let head = format!(
+                    "HTTP/1.1 206 Partial Content\r\ncontent-range: bytes {start}-{end}/1048576\r\ncontent-length: {length}\r\nconnection: close\r\n\r\n"
+                );
+                writer.write_all(head.as_bytes()).ok();
+                writer.write_all(&vec![0u8; length as usize]).ok();
+            });
+        }
+    });
+
+    url
+}
+
+#[test]
+fn a_stream_that_only_serves_its_opening_chunk_is_not_playable() {
+    use crate::shared::youtube::Youtube;
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio");
+    let youtube = Youtube::new();
+    let whole = ranged(None);
+    let opening = ranged(Some(128 * 1024));
+
+    for url in [whole.clone(), format!("{whole}?clen=1048576")] {
+        assert!(runtime.block_on(youtube.playable(&url, "test")));
+    }
+    for url in [opening.clone(), format!("{opening}?clen=1048576")] {
+        assert!(!runtime.block_on(youtube.playable(&url, "test")));
+    }
+}
+
+#[test]
+fn audio_keeps_a_range_the_signature_covers() {
+    let value = json!({
+        "streamingData": {"adaptiveFormats": [
+            {"itag": 140, "mimeType": "audio/mp4; codecs=\"mp4a.40.2\"",
+             "url": "https://x/stream?expire=1&range=0-99999&sparams=expire%2Crange&sig=abc"}
+        ]}
+    });
+
+    assert_eq!(
+        pick_audio(&value).unwrap().0,
+        "https://x/stream?expire=1&range=0-99999&sparams=expire%2Crange&sig=abc"
+    );
 }
 
 #[test]

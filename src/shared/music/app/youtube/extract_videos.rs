@@ -48,7 +48,7 @@ pub(super) fn extract_channels(value: &Value) -> Vec<Channel> {
                 .and_then(renderer_text)
                 .unwrap_or_default();
             channels.push(Channel {
-                id: id.to_owned(),
+                id: crate::shared::music::domain::id::channel(id),
                 name,
                 avatar: thumbnails(renderer.get("thumbnail")),
             });
@@ -145,10 +145,10 @@ pub(super) fn collect_videos(
                         .map(parse_duration)
                         .unwrap_or(0);
                     out.push(Video {
-                        id: id.to_owned(),
+                        id: crate::shared::music::domain::id::video(id),
                         title,
                         author: author.to_owned(),
-                        channel: Some(channel.to_owned()),
+                        channel: Some(crate::shared::music::domain::id::channel(channel)),
                         duration,
                         official: false,
                     });
@@ -237,10 +237,12 @@ pub(super) fn extract_videos(value: &Value) -> Vec<Video> {
                 });
 
             videos.push(Video {
-                id: id.to_owned(),
+                id: crate::shared::music::domain::id::video(id),
                 title,
                 author,
-                channel,
+                channel: channel
+                    .as_deref()
+                    .map(crate::shared::music::domain::id::channel),
                 duration,
                 official,
             });
@@ -288,7 +290,7 @@ pub(super) fn pick_audio(value: &Value) -> Option<(String, f64)> {
     }
 
     let (format, _) = best?;
-    let url = format.get("url")?.as_str()?.to_owned();
+    let url = unpinned(format.get("url")?.as_str()?);
     let duration = duration_from_url(&url)
         .or_else(|| {
             format
@@ -300,6 +302,68 @@ pub(super) fn pick_audio(value: &Value) -> Option<(String, f64)> {
         .unwrap_or(0.0);
 
     Some((url, duration))
+}
+
+/// Drops the `range` query param YouTube pins some stream URLs to. It makes
+/// googlevideo report the pinned slice as the whole stream, so the player stops
+/// at the pin and reads the bytes after it as if the track had ended.
+///
+/// The URL is cut, never rebuilt: a signed URL is only valid byte for byte.
+/// And it stays when its signature covers it, because googlevideo answers 401
+/// to a URL whose signed params were trimmed.
+fn unpinned(raw: &str) -> String {
+    let Ok(url) = Url::parse(raw) else {
+        return raw.to_owned();
+    };
+
+    let signed = url
+        .query_pairs()
+        .filter(|(key, _)| key == "sparams" || key == "lsparams")
+        .any(|(_, value)| value.split(',').any(|name| name == "range"));
+    if signed {
+        return raw.to_owned();
+    }
+
+    let Some((head, query)) = raw.split_once('?') else {
+        return raw.to_owned();
+    };
+    let (query, tail) = match query.split_once('#') {
+        Some((query, tail)) => (query, Some(tail)),
+        None => (query, None),
+    };
+
+    let mut kept = Vec::new();
+    let mut dropped = false;
+    for pair in query.split('&') {
+        match pair.starts_with("range=") {
+            true => dropped = true,
+            false => kept.push(pair),
+        }
+    }
+
+    if !dropped {
+        return raw.to_owned();
+    }
+
+    let mut out = head.to_owned();
+    if !kept.is_empty() {
+        out.push('?');
+        out.push_str(&kept.join("&"));
+    }
+    if let Some(tail) = tail {
+        out.push('#');
+        out.push_str(tail);
+    }
+    out
+}
+
+pub(super) fn length_from_url(url: &str) -> Option<u64> {
+    let parsed = Url::parse(url).ok()?;
+    let value = parsed
+        .query_pairs()
+        .find(|(key, _)| key == "clen")
+        .map(|(_, value)| value.to_string())?;
+    value.parse().ok()
 }
 
 pub(super) fn duration_from_url(url: &str) -> Option<f64> {

@@ -6,6 +6,7 @@ use url::Url;
 
 use crate::shared::i18n::t;
 use crate::shared::music::domain::Song;
+use crate::shared::storage::links;
 use crate::shell::app::{Event, Jondo};
 
 use super::{Editor, Mode, submit};
@@ -164,35 +165,36 @@ pub fn save(app: &mut Jondo, cx: &mut Context<Jondo>) {
 }
 
 fn apply_video(app: &mut Jondo, song_id: &str, video: &str, cx: &mut Context<Jondo>) {
-    app.store.pick(song_id, video);
+    let video = crate::shared::music::domain::id::video(video);
+    app.store.pick(song_id, &video);
     app.player.update(cx, |player, _| {
         for song in &mut player.queue.songs {
-            set_video(song, song_id, video);
+            set_video(song, song_id, &video);
         }
     });
 
     for playlist in &mut app.store.playlists {
         for song in &mut playlist.songs {
-            set_video(song, song_id, video);
+            set_video(song, song_id, &video);
         }
     }
 
     for playlist in &mut app.store.saved {
         for song in &mut playlist.songs {
-            set_video(song, song_id, video);
+            set_video(song, song_id, &video);
         }
     }
 
     app.catalog.update(cx, |catalog, _| {
         for playlist in catalog.playlists.values_mut() {
             for song in &mut playlist.songs {
-                set_video(song, song_id, video);
+                set_video(song, song_id, &video);
             }
         }
     });
 
     if let Some(song) = &mut app.store.last_song {
-        set_video(song, song_id, video);
+        set_video(song, song_id, &video);
     }
 }
 
@@ -201,7 +203,7 @@ fn set_video(song: &mut Song, song_id: &str, video: &str) {
         return;
     }
 
-    song.video_id = (!video.is_empty()).then(|| video.to_owned());
+    song.video_id = (!video.is_empty()).then(|| crate::shared::music::domain::id::video(video));
     if video.is_empty() {
         song.uri = None;
     }
@@ -247,7 +249,7 @@ pub(super) fn stored(app: &Jondo, id: &str, cx: &App) -> Option<String> {
                 .values()
                 .find_map(|playlist| find(&playlist.songs, id))
         })
-        .or_else(|| app.store.youtube_links.get(id).cloned())
+        .or_else(|| links::read(id))
 }
 
 pub fn stripped(text: &str) -> &str {

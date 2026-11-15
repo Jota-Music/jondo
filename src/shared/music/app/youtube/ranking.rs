@@ -174,9 +174,16 @@ pub async fn candidates(youtube: &Youtube, song: &Song) -> Result<Vec<Video>, St
 /// Orders the results by how well each video matches the song. It only
 /// reorders: the caller still takes the first candidate that plays, so a poor
 /// match stays a fallback instead of becoming a failure.
-fn rank(mut videos: Vec<Video>, song: &Song) -> Vec<Video> {
-    videos.sort_by(|left, right| penalty(left, song).total_cmp(&penalty(right, song)));
-    videos
+fn rank(videos: Vec<Video>, song: &Song) -> Vec<Video> {
+    // The penalty is computed once per video: inside the comparator it would
+    // be computed again on every comparison, and each one tokenizes the title
+    // and builds a set of its words.
+    let mut ranked: Vec<(f64, Video)> = videos
+        .into_iter()
+        .map(|video| (penalty(&video, song), video))
+        .collect();
+    ranked.sort_by(|left, right| left.0.total_cmp(&right.0));
+    ranked.into_iter().map(|(_, video)| video).collect()
 }
 
 fn unique(videos: Vec<Video>) -> Vec<Video> {

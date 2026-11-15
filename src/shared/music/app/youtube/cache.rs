@@ -1,15 +1,15 @@
 use std::collections::BTreeMap;
-use std::fs;
-use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use super::client::Visitor;
+use super::BROWSER_AGENT;
+use super::client::{CLIENTS, Visitor};
 use crate::shared::kernel::app::mutex;
 use crate::shared::music::domain::Stream;
+use crate::shared::storage::cache::{self, wire};
 
 /// How long a URL that carries no `expire` of its own is trusted. YouTube
 /// always signs one, so this only covers a malformed answer.
@@ -21,76 +21,105 @@ const MARGIN: u64 = 30;
 
 /// How long the visitor token survives a restart. A cold start that resumes it
 /// skips the homepage scrape entirely.
-const VISITOR: u64 = 24 * 60 * 60;
+const VISITOR: i64 = 24 * 60 * 60 * 1000;
 
-/// What YouTube handed out that is still worth something after a restart. The
-/// file is a snapshot, never a source of truth: an entry past its expiry is
-/// dropped, so a stale URL never surfaces as a 403.
-#[derive(Default, Serialize, Deserialize)]
+/// The token file: the visitor and the client that last played, nothing else.
+/// It is raw JSON, with no envelope, so Jota reads the same file.
+const SESSION: &str = "youtube/session";
+
+/// Where the stream resolved for a video is kept: one file per video, so a play
+/// rewrites one entry and not the whole YouTube cache.
+fn stream_name(video_id: &str) -> String {
+    format!("youtube/streams/{video_id}")
+}
+
+/// What YouTube handed out that is still worth something after a restart.
+#[derive(Clone, Default, Serialize, Deserialize)]
 struct Saved {
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    streams: BTreeMap<String, Entry>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     visitor: Option<Token>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     client: String,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-struct Entry {
-    #[serde(flatten)]
-    stream: Stream,
-    expires: u64,
-}
-
+/// A value with a deadline, in milliseconds since the epoch.
 #[derive(Clone, Serialize, Deserialize)]
 struct Token {
-    id: String,
-    key: String,
-    at: u64,
+    value: String,
+    at: i64,
 }
 
 pub(super) struct Cache {
-    path: Option<PathBuf>,
+    /// False for a caller that keeps nothing between runs: the session and the
+    /// streams stay in memory, so a test leaves no side effects.
+    persist: bool,
     saved: Mutex<Saved>,
+    /// What this run resolved, so the track that is about to play again costs
+    /// no disk read.
+    streams: Mutex<BTreeMap<String, (Stream, i64)>>,
 }
 
 impl Cache {
-    pub(super) fn load(path: Option<PathBuf>) -> Self {
-        let saved = path.as_deref().and_then(read).unwrap_or_default();
+    pub(super) fn load(persist: bool) -> Self {
+        let saved = if persist {
+            read_session().unwrap_or_default()
+        } else {
+            Saved::default()
+        };
+
         Self {
-            path,
+            persist,
             saved: Mutex::new(saved),
+            streams: Mutex::new(BTreeMap::new()),
         }
     }
 
-    pub(super) fn stream(&self, video_id: &str) -> Option<Stream> {
-        let saved = mutex::lock(&self.saved);
-        let entry = saved.streams.get(video_id)?;
-        (now() < entry.expires).then(|| entry.stream.clone())
+    /// A stream resolved in this run or a previous one, with the moment it was
+    /// saved. A URL past its own expiry is never handed out.
+    pub(super) fn stream(&self, video_id: &str) -> Option<(Stream, i64)> {
+        let mut streams = mutex::lock(&self.streams);
+        if let Some((stream, saved)) = streams.get(video_id)
+            && now() < expiry(&stream.url)
+        {
+            return Some((stream.clone(), *saved));
+        }
+        streams.remove(video_id);
+        drop(streams);
+
+        if !self.persist {
+            return None;
+        }
+
+        let (audio, saved) = cache::get_with_meta::<wire::Audio>(&stream_name(video_id))?;
+        let stream = stream(&audio);
+        mutex::lock(&self.streams).insert(video_id.to_owned(), (stream.clone(), saved));
+        Some((stream, saved))
     }
 
+    /// Keeps a stream for as long as its own URL lives.
     pub(super) fn keep(&self, video_id: &str, stream: &Stream) {
-        let mut saved = mutex::lock(&self.saved);
-        let now = now();
-        saved.streams.retain(|_, entry| entry.expires > now);
-        saved.streams.insert(
-            video_id.to_owned(),
-            Entry {
-                stream: stream.clone(),
-                expires: expiry(&stream.url),
-            },
-        );
-        self.write(&saved);
+        let saved = cache::now_ms();
+        mutex::lock(&self.streams).insert(video_id.to_owned(), (stream.clone(), saved));
+
+        if !self.persist {
+            return;
+        }
+
+        let ttl = Duration::from_secs(expiry(&stream.url).saturating_sub(now()));
+        let audio = audio(video_id, stream);
+        if let Err(error) = cache::put(&stream_name(video_id), &audio, Some(ttl)) {
+            log::debug!("youtube stream: {error}");
+        }
     }
 
     /// A URL that just failed is not handed out again: the next play of the
     /// same song would fail exactly the same way, and a signed URL is revoked
     /// long before the expiry it advertises.
     pub(super) fn forget(&self, video_id: &str) {
-        let mut saved = mutex::lock(&self.saved);
-        if saved.streams.remove(video_id).is_some() {
-            self.write(&saved);
+        mutex::lock(&self.streams).remove(video_id);
+
+        if self.persist {
+            let _ = cache::forget(&stream_name(video_id));
         }
     }
 
@@ -106,15 +135,15 @@ impl Cache {
     pub(super) fn visitor(&self) -> Option<Visitor> {
         let saved = mutex::lock(&self.saved);
         let token = saved.visitor.as_ref()?;
-        (now() < token.at + VISITOR).then(|| Visitor::resumed(&token.id, &token.key))
+        (cache::now_ms().saturating_sub(token.at) < VISITOR)
+            .then(|| Visitor::resumed(&token.value, ""))
     }
 
     pub(super) fn remember_visitor(&self, visitor: &Visitor) {
         let mut saved = mutex::lock(&self.saved);
         saved.visitor = Some(Token {
-            id: visitor.id.clone(),
-            key: visitor.key.clone(),
-            at: now(),
+            value: visitor.id.clone(),
+            at: cache::now_ms(),
         });
         self.write(&saved);
     }
@@ -139,17 +168,52 @@ impl Cache {
     /// Best effort: a cache that cannot be written costs a resolve, never the
     /// track that is playing.
     fn write(&self, saved: &Saved) {
-        let Some(path) = self.path.as_deref() else {
+        if !self.persist {
             return;
-        };
+        }
 
         let Ok(text) = serde_json::to_string(saved) else {
             return;
         };
 
-        if let Err(error) = save(path, &text) {
-            log::debug!("youtube cache: {error}");
+        if let Err(error) = cache::write_raw(SESSION, text.as_bytes()) {
+            log::debug!("youtube session: {error}");
         }
+    }
+}
+
+/// The session as a previous run left it: raw JSON, no envelope.
+fn read_session() -> Option<Saved> {
+    serde_json::from_slice::<Saved>(&cache::read_raw(SESSION)?).ok()
+}
+
+/// The file holds Jota's audio: no user agent, the client that resolved it
+/// instead, which names the agent again on the way back.
+fn audio(video_id: &str, stream: &Stream) -> wire::Audio {
+    wire::Audio {
+        url: stream.url.clone(),
+        duration: stream.duration.max(0.0) as u32,
+        expire_at: expiry(&stream.url) as i64,
+        video_id: video_id.to_owned(),
+        client_name: CLIENTS
+            .iter()
+            .find(|client| client.agent == stream.agent)
+            .map(|client| client.name.to_owned())
+            .unwrap_or_default(),
+    }
+}
+
+fn stream(audio: &wire::Audio) -> Stream {
+    let agent = CLIENTS
+        .iter()
+        .find(|client| client.name == audio.client_name)
+        .map(|client| client.agent)
+        .unwrap_or(BROWSER_AGENT);
+
+    Stream {
+        url: audio.url.clone(),
+        agent: agent.to_owned(),
+        duration: audio.duration as f64,
     }
 }
 
@@ -173,19 +237,6 @@ fn expiry(url: &str) -> u64 {
         Some(expire) => expire.saturating_sub(MARGIN).max(now()),
         None => now() + FALLBACK,
     }
-}
-
-fn read(path: &Path) -> Option<Saved> {
-    let text = fs::read_to_string(path).ok()?;
-    serde_json::from_str(&text).ok()
-}
-
-fn save(path: &Path, text: &str) -> std::io::Result<()> {
-    if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir)?;
-    }
-
-    fs::write(path, text)
 }
 
 #[cfg(test)]

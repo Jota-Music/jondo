@@ -5,13 +5,47 @@ use serde_json::{Value, json};
 use super::*;
 use super::{client::*, cookies::*, extract_playlists::*, extract_videos::*};
 use crate::shared::kernel::app::mutex;
+use crate::shared::music::domain::Song;
+use crate::shared::storage::cache::{self, wire};
+
+/// The video an earlier resolve named, rebuilt from the song it stored: the
+/// title, the author, the channel and the duration are all on the file.
+pub(super) fn video_from_song(video_id: &str, song: Song) -> Video {
+    Video {
+        id: crate::shared::music::domain::id::video(video_id),
+        title: song.name,
+        author: song.artists.first().cloned().unwrap_or_default(),
+        channel: song.artist_ids.first().cloned(),
+        duration: song.duration,
+        official: false,
+    }
+}
 
 /// The whole resolve is bounded: three clients, two rounds and a probe each can
 /// outlive the user's patience when the network is only half there.
 const RESOLVE: Duration = Duration::from_secs(25);
 
+/// How recently a stream must have been resolved for its URL to be trusted
+/// without a HEAD: the resolve already probed it, and the signature has hours
+/// left. Older entries are still probed.
+const PROBE_GRACE: i64 = 10 * 60 * 1000;
+
+/// Whether a stream saved at that moment was probed recently enough to skip the
+/// check. A HEAD to googlevideo costs a round trip, and paying it for a URL
+/// this run just proved playable only slows the next track down.
+fn proven(saved: i64) -> bool {
+    crate::shared::kernel::app::clock::now_ms().saturating_sub(saved) < PROBE_GRACE
+}
+
 impl Youtube {
-    pub async fn video(&self, video_id: &str) -> Result<Video, String> {
+    pub async fn video(&self, video: &str) -> Result<Video, String> {
+        let video_id = crate::shared::music::domain::id::bare(video);
+
+        // a video resolved before answers from its own file, as Jota keeps it
+        if let Some(song) = cache::get::<wire::Song>(&format!("youtube/tracks/{video_id}")) {
+            return Ok(video_from_song(video_id, song.into()));
+        }
+
         let url = format!(
             "https://www.youtube.com/oembed?format=json&url=https://www.youtube.com/watch?v={video_id}"
         );
@@ -26,27 +60,38 @@ impl Youtube {
             .await
             .map_err(|error| error.to_string())?;
 
-        Ok(Video {
-            id: video_id.to_owned(),
+        let video = Video {
+            id: crate::shared::music::domain::id::video(video_id),
             title: text(value.get("title")).unwrap_or_else(|| video_id.to_owned()),
             author: text(value.get("author_name")).unwrap_or_default(),
             channel: value
                 .get("author_url")
                 .and_then(Value::as_str)
-                .and_then(channel_ref),
+                .and_then(channel_ref)
+                .map(|channel| crate::shared::music::domain::id::channel(&channel)),
             duration: 0,
             official: false,
-        })
+        };
+
+        let _ = cache::put(
+            &format!("youtube/tracks/{video_id}"),
+            &wire::Song::from(&video.song()),
+            None,
+        );
+
+        Ok(video)
     }
 
     /// A URL from YouTube lasts hours, so the queue asks once. Replaying a
     /// song, skipping back or prefetching the next one costs no round trip.
-    pub async fn stream(&self, video_id: &str) -> Result<Stream, String> {
-        if let Some(stream) = self.cached(video_id) {
-            // A cached URL that googlevideo now refuses to serve past the first
-            // megabyte is not a stream: re-resolve instead of handing out a
-            // link the player cannot finish.
-            if self.probe(&stream.url, &stream.agent).await {
+    pub async fn stream(&self, video: &str) -> Result<Stream, String> {
+        let video_id = crate::shared::music::domain::id::bare(video);
+        if let Some((stream, saved)) = self.cache.stream(video_id) {
+            // A URL resolved minutes ago was probed then and its signature has
+            // hours left; an older one is probed before it is handed out. A URL
+            // googlevideo now refuses past the first megabyte is not a stream:
+            // re-resolve instead of handing out a link the player cannot finish.
+            if proven(saved) || self.playable(&stream.url, &stream.agent).await {
                 return Ok(stream);
             }
             self.forget(video_id);
@@ -58,6 +103,7 @@ impl Youtube {
     /// A new URL for a stream that died mid-track: the cached one is the one
     /// that just failed, so retrying hands out the same broken link.
     pub async fn refresh(&self, video_id: &str) -> Result<Stream, String> {
+        let video_id = crate::shared::music::domain::id::bare(video_id);
         let stream = tokio::time::timeout(RESOLVE, self.fetch(video_id))
             .await
             .map_err(|_| "YouTube took too long to answer".to_owned())??;
@@ -66,7 +112,7 @@ impl Youtube {
     }
 
     pub fn cached(&self, video_id: &str) -> Option<Stream> {
-        self.cache.stream(video_id)
+        self.cache.stream(video_id).map(|(stream, _)| stream)
     }
 
     /// Drops the URL that just failed. A signed URL can be revoked hours before
@@ -130,7 +176,8 @@ impl Youtube {
                         login = true;
                         if signed {
                             restricted = Some(
-                                "YouTube did not accept the stored session for this video.".to_owned(),
+                                "YouTube did not accept the stored session for this video."
+                                    .to_owned(),
                             );
                         } else if restricted.is_none() {
                             restricted = Some(match reason {
@@ -155,8 +202,9 @@ impl Youtube {
 
                     let Some((url, duration)) = pick_audio(&value) else {
                         if signed {
-                            restricted =
-                                Some("YouTube returned no playable audio for this video.".to_owned());
+                            restricted = Some(
+                                "YouTube returned no playable audio for this video.".to_owned(),
+                            );
                         } else if restricted.is_none() {
                             restricted = Some("YouTube returned no playable audio".to_owned());
                         }
@@ -164,7 +212,7 @@ impl Youtube {
                         continue;
                     };
 
-                    if !self.probe(&url, client.agent).await {
+                    if !self.playable(&url, client.agent).await {
                         last_error = Some("stream is not playable".to_owned());
                         continue;
                     }
@@ -195,18 +243,55 @@ impl Youtube {
         }
     }
 
-    /// A plain HEAD is what the player asks first: googlevideo URLs that only
-    /// answer a bounded Range request hand out a megabyte and then refuse the
-    /// rest, so a URL that 403s this probe is not a stream that can play. This
-    /// mirrors how Jota validates a candidate before trusting it.
-    pub(super) async fn probe(&self, url: &str, agent: &str) -> bool {
-        self.http
-            .head(url)
+    /// Whether the player can finish the track from this URL. A HEAD is not
+    /// enough: a URL can answer it and still serve only its opening chunk, so
+    /// the player reads the first bytes and then gets silence, or dies at the
+    /// first re-resolved slice. The opening range gives both the proof and the
+    /// length, and the tail is asked for with the same bytes the player will
+    /// read when it looks for the movie box.
+    pub(super) async fn playable(&self, url: &str, agent: &str) -> bool {
+        let Some(advertised) = self.range(url, agent, 0, 1023).await else {
+            return false;
+        };
+        let length = length_from_url(url)
+            .filter(|length| *length > 0)
+            .unwrap_or(advertised);
+
+        length > 0
+            && self
+                .range(url, agent, length.saturating_sub(1024), length - 1)
+                .await
+                .is_some()
+    }
+
+    /// One bounded range, answered as the player will ask for it, carrying the
+    /// length of the whole stream that the answer advertises.
+    async fn range(&self, url: &str, agent: &str, start: u64, end: u64) -> Option<u64> {
+        let response = self
+            .http
+            .get(url)
+            .header(reqwest::header::RANGE, format!("bytes={start}-{end}"))
             .header(reqwest::header::USER_AGENT, agent)
+            .header(reqwest::header::ACCEPT_ENCODING, "identity")
             .timeout(Duration::from_secs(6))
             .send()
             .await
-            .is_ok_and(|response| response.status().is_success())
+            .ok()?;
+
+        if response.status() != reqwest::StatusCode::PARTIAL_CONTENT {
+            return None;
+        }
+
+        response
+            .headers()
+            .get(reqwest::header::CONTENT_RANGE)?
+            .to_str()
+            .ok()?
+            .rsplit('/')
+            .next()?
+            .trim()
+            .parse()
+            .ok()
     }
 
     pub(super) fn context(&self, client: Client) -> Value {

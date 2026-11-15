@@ -265,7 +265,11 @@ pub(super) fn playlist_song(
         .unwrap_or(0);
     let mut song = youtube_song(id, &title, &author, duration);
     song.album = album.to_owned();
-    song.artist_ids = byline.and_then(browse_id).into_iter().collect();
+    song.artist_ids = byline
+        .and_then(browse_id)
+        .map(|channel| crate::shared::music::domain::id::channel(&channel))
+        .into_iter()
+        .collect();
     Some(song)
 }
 
@@ -303,6 +307,7 @@ pub(super) fn lockup_song(
     song.artist_ids = metadata
         .pointer("/metadata/contentMetadataViewModel/metadataRows/0/metadataParts/0")
         .and_then(nested_browse_id)
+        .map(|channel| crate::shared::music::domain::id::channel(&channel))
         .into_iter()
         .collect();
     Some(song)

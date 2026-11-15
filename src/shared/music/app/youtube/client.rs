@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -135,7 +134,7 @@ impl Youtube {
     /// Everything lives in memory: a test or a one-shot caller gets no side
     /// effects, and no state from a previous run.
     pub fn new() -> Self {
-        Self::with_cache(None)
+        Self::with_cache(false)
     }
 
     /// The app keeps what YouTube handed out between runs: a signed URL is
@@ -143,12 +142,10 @@ impl Youtube {
     /// It lives in its own folder so a backup scan of the config folder never
     /// mistakes it for one.
     pub fn persisted() -> Self {
-        Self::with_cache(
-            crate::shared::storage::dir().map(|dir| dir.join("cache").join("youtube.json")),
-        )
+        Self::with_cache(true)
     }
 
-    fn with_cache(path: Option<PathBuf>) -> Self {
+    fn with_cache(persist: bool) -> Self {
         Self {
             http: reqwest::Client::builder()
                 .http1_only()
@@ -158,7 +155,7 @@ impl Youtube {
             visitor: Mutex::new(None),
             refreshing: tokio::sync::Mutex::new(()),
             session: Mutex::new(None),
-            cache: Cache::load(path),
+            cache: Cache::load(persist),
         }
     }
 
@@ -276,6 +273,16 @@ impl Youtube {
             return Err("YouTube asks for a signed-in session".to_owned());
         }
 
+        if let Some(cached) = crate::shared::storage::cache::get::<
+            Vec<crate::shared::storage::cache::wire::Summary>,
+        >("youtube/library")
+        {
+            return Ok(cached
+                .into_iter()
+                .map(crate::shared::storage::cache::wire::Summary::into_domain)
+                .collect());
+        }
+
         let origin = origin(LIBRARY_PAGE);
         let mut request = self
             .http
@@ -305,7 +312,32 @@ impl Youtube {
             return Err(EXPIRED.to_owned());
         }
 
-        Ok(extract_library(&data))
+        let playlists = extract_library(&data);
+        let summaries: Vec<crate::shared::storage::cache::wire::Summary> = playlists
+            .iter()
+            .map(crate::shared::storage::cache::wire::Summary::from)
+            .collect();
+        let _ = crate::shared::storage::cache::put("youtube/library", &summaries, None);
+
+        Ok(playlists)
+    }
+
+    /// The playlist a file holds, and when it was saved.
+    pub fn cached_playlist(&self, id: &str) -> Option<(Playlist, i64)> {
+        let id = id
+            .trim()
+            .strip_prefix("youtube:playlist:")
+            .unwrap_or(id.trim());
+        if id.is_empty() {
+            return None;
+        }
+
+        let (cached, saved) = crate::shared::storage::cache::get_with_meta::<
+            crate::shared::storage::cache::wire::Playlist,
+        >(&format!("youtube/playlists/{id}"))?;
+        let full = crate::shared::music::domain::id::playlist(&format!("youtube:playlist:{id}"));
+
+        Some((cached.into_domain(&full), saved))
     }
 
     pub async fn playlist(&self, id: &str) -> Result<Playlist, String> {
@@ -317,6 +349,8 @@ impl Youtube {
         if id.is_empty() {
             return Err("playlist is required".to_owned());
         }
+
+        let key = format!("youtube/playlists/{id}");
 
         let mut songs = Vec::new();
         let mut seen = HashSet::new();
@@ -425,12 +459,14 @@ impl Youtube {
         }
 
         for song in &mut songs {
-            song.playlist_id = Some(id.clone());
+            song.playlist_id = Some(crate::shared::music::domain::id::playlist(&format!(
+                "youtube:playlist:{id}"
+            )));
         }
 
         let count = songs.len() as u32;
-        Ok(Playlist {
-            id: format!("youtube:playlist:{id}"),
+        let playlist = Playlist {
+            id: crate::shared::music::domain::id::playlist(&format!("youtube:playlist:{id}")),
             name,
             subtitle: (!owner.is_empty()).then(|| owner.clone()),
             cover,
@@ -441,6 +477,14 @@ impl Youtube {
             songs,
             track_count: count,
             loading: false,
-        })
+        };
+
+        let _ = crate::shared::storage::cache::put(
+            &key,
+            &crate::shared::storage::cache::wire::Playlist::from(&playlist),
+            None,
+        );
+
+        Ok(playlist)
     }
 }
