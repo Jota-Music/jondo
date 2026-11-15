@@ -28,12 +28,15 @@ pub(super) struct Cache {
     pub(super) chunk: u64,
 }
 
-const CACHE_CHUNK: u64 = 128 * 1024;
+/// A whole megabyte because googlevideo starts answering 401 when a player
+/// asks for too many ranges in a burst: two threads with 128 KiB chunks trip it
+/// in under a second, while no run of megabyte chunks ever did. At 128 KiB a
+/// long track also spends its URL on a hundred round trips.
+const CACHE_CHUNK: u64 = 1024 * 1024;
 /// Chunks held in memory at once. The decoder reads sequentially and the worker
-/// keeps the ones ahead of it in memory, so four is slack for a seek; 128 KiB
-/// each keeps the whole stream near half a megabyte instead of the size of the
-/// file, and keeps the wait before the first byte at 128 KiB instead of half a
-/// megabyte.
+/// keeps the ones ahead of it in memory, so four is slack for a seek. With a
+/// megabyte each the whole stream sits near four megabytes instead of the size
+/// of the file.
 const CACHE_WINDOW: usize = 4;
 const MAX_LENGTH: u64 = 512 * 1024 * 1024;
 
@@ -51,10 +54,12 @@ enum Failure {
     Dead(String),
 }
 
-/// The statuses a signed URL never recovers from: the signature expired, the
-/// video is gone, or the client asking is not the one it was signed for.
+/// The statuses a signed URL never recovers from: the video is gone. A 401 or
+/// a 403 is not one of them: googlevideo answers both when a player asks for
+/// too many ranges at once, and the same URL answers 206 again a second later,
+/// so those get the retry and its pause instead of killing the track.
 fn permanent(status: reqwest::StatusCode) -> bool {
-    matches!(status.as_u16(), 401 | 403 | 404 | 410)
+    matches!(status.as_u16(), 404 | 410)
 }
 
 /// One bounded range, retried. The answer carries the length of the whole
@@ -111,11 +116,18 @@ pub(super) fn fetch_range(
         })();
         match fetched {
             Ok(range) => return Ok(range),
-            Err(Failure::Dead(error)) => return Err(format!("bytes {start}-{end}: {error}")),
+            Err(Failure::Dead(error)) => {
+                // The URL itself is the evidence when a signed stream stops
+                // answering: the same bytes can be tried from it afterwards.
+                log::warn!("audio: dead range {start}-{end} from {url}: {error}");
+                return Err(format!("bytes {start}-{end}: {error}"));
+            }
             Err(Failure::Retry(error)) => {
                 log::warn!("audio: bytes {start}-{end} attempt {attempt}: {error}");
                 last = error;
-                thread::sleep(Duration::from_millis(100 + attempt * 150));
+                if attempt < 2 {
+                    thread::sleep(Duration::from_millis(300 + attempt * 400));
+                }
             }
         }
     }

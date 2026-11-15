@@ -118,8 +118,9 @@ fn open(server: &Server, chunk: usize) -> HttpSource {
     HttpSource::open(&server.url, "test", chunk as u64).expect("open")
 }
 
-/// A server that refuses the range the way a revoked URL does: 403, always.
-fn denied() -> (String, Arc<AtomicU64>) {
+/// A server that refuses every range with one status, like a URL that is spent
+/// or a video that is gone.
+fn denied(status: &'static str) -> (String, Arc<AtomicU64>) {
     let listener = TcpListener::bind("127.0.0.1:0").expect("refusing server");
     let url = format!("http://{}/audio", listener.local_addr().unwrap());
     let requests = Arc::new(AtomicU64::new(0));
@@ -144,9 +145,9 @@ fn denied() -> (String, Arc<AtomicU64>) {
                 }
 
                 hits.fetch_add(1, Ordering::SeqCst);
-                let _ = stream.write_all(
-                    b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
-                );
+                let response =
+                    format!("HTTP/1.1 {status}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                let _ = stream.write_all(response.as_bytes());
             });
         }
     });
@@ -154,22 +155,24 @@ fn denied() -> (String, Arc<AtomicU64>) {
     (url, requests)
 }
 
-/// A revoked URL answers 403 and never recovers: asking three times only
-/// delays the re-resolve that actually plays the song.
+/// A 403 is googlevideo's burst limit, not a dead URL: the same range answers
+/// again a moment later, so the mismatch is worth three asks and their pause.
 #[test]
-fn a_refused_range_is_not_retried() {
-    let (url, requests) = denied();
-    let error = match HttpSource::open(&url, "test", 128 * 1024) {
-        Ok(_) => panic!("a 403 opened a stream"),
-        Err(error) => error,
-    };
-    println!("{error} after {} requests", requests.load(Ordering::SeqCst));
+fn a_throttled_range_is_asked_again() {
+    let (url, requests) = denied("403 Forbidden");
 
-    assert_eq!(
-        requests.load(Ordering::SeqCst),
-        1,
-        "a refused range was asked again"
-    );
+    assert!(HttpSource::open(&url, "test", 128 * 1024).is_err());
+    assert_eq!(requests.load(Ordering::SeqCst), 3, "a 403 was not retried");
+}
+
+/// A video that is gone answers 404: asking again only delays the re-resolve
+/// that actually plays the song.
+#[test]
+fn a_gone_video_is_not_retried() {
+    let (url, requests) = denied("404 Not Found");
+
+    assert!(HttpSource::open(&url, "test", 128 * 1024).is_err());
+    assert_eq!(requests.load(Ordering::SeqCst), 1, "a 404 was asked again");
 }
 
 fn first_read(source: &mut HttpSource) -> usize {
