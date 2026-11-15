@@ -78,8 +78,13 @@ pub(super) fn resize_bands(cx: &mut Context<Jondo>) -> AnyElement {
     ) -> AnyElement {
         area(div().absolute().cursor(cursor).on_mouse_down(
             gpui::MouseButton::Left,
-            cx.listener(move |_, _: &gpui::MouseDownEvent, window, _| {
+            cx.listener(move |_, _: &gpui::MouseDownEvent, window, cx| {
                 window.start_window_resize(edge);
+                // The band is the last child of the root, so its listener runs
+                // first in the bubble phase and owns the press. Without this,
+                // a scrollbar under the edge still captures the pointer and
+                // the drag scrolls while the cursor promised a resize.
+                cx.stop_propagation();
             }),
         ))
         .into_any_element()
