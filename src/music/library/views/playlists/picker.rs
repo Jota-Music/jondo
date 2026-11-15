@@ -22,36 +22,14 @@ pub(super) fn picker(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jond
         app.ui.picker_targets.clear();
     }
 
-    let songs = app.ui.picker.clone().unwrap_or_default();
-    let count = songs.len();
+    let count = app.ui.picker.as_ref().map_or(0, Vec::len);
     let name_field = app.field("picker-name", "", t("Playlist name"), window, cx);
     let cancel = cx.listener(|app, _: &gpui::ClickEvent, window, cx| {
         app.ui.closing = Some(Instant::now());
         app.set_field("picker-name", "", window, cx);
         cx.notify();
     });
-    let submit = cx.listener({
-        let songs = songs.clone();
-        move |app, _: &gpui::ClickEvent, window, cx| {
-            let name = app.value("picker-name", cx).trim().to_owned();
-            let mut targets: Vec<String> = app.ui.picker_targets.drain().collect();
-            if !name.is_empty() {
-                let id = app.store.create_playlist(&name);
-                app.library_changed(cx);
-                targets.push(id);
-            }
-
-            for id in targets {
-                for song in &songs {
-                    app.add_to_playlist(&id, song, cx);
-                }
-            }
-
-            app.set_field("picker-name", "", window, cx);
-            app.ui.closing = Some(Instant::now());
-            cx.notify();
-        }
-    });
+    let submit = cx.listener(|app, _: &gpui::ClickEvent, window, cx| add(app, window, cx));
     let playlists: Vec<_> = app
         .store
         .playlists
@@ -169,3 +147,31 @@ pub(super) fn picker(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jond
             ),
     )
 }
+
+pub(super) fn add(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) {
+    let Some(songs) = app.ui.picker.clone() else {
+        return;
+    };
+
+    let name = app.value("picker-name", cx).trim().to_owned();
+    let mut targets: Vec<String> = app.ui.picker_targets.drain().collect();
+    if !name.is_empty() {
+        let id = app.store.create_playlist(&name);
+        app.library_changed(cx);
+        targets.push(id);
+    }
+
+    for id in targets {
+        for song in &songs {
+            app.add_to_playlist(&id, song, cx);
+        }
+    }
+
+    app.set_field("picker-name", "", window, cx);
+    app.ui.closing = Some(Instant::now());
+    cx.notify();
+}
+
+#[cfg(test)]
+#[path = "picker.test.rs"]
+mod tests;

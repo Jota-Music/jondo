@@ -9,7 +9,7 @@ use crate::shell::views::sheet as sheet_ui;
 
 use super::confirm::{confirm, confirm_remove};
 use super::create::create;
-use super::picker::picker;
+use super::picker::{add, picker};
 use super::rename::rename;
 
 pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> AnyElement {
@@ -119,6 +119,17 @@ pub fn wire(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) {
                 }
 
                 cx.notify();
+            }
+        },
+    ));
+
+    let picker = app.field("picker-name", "", t("Playlist name"), window, cx);
+    app.subscriptions.push(cx.subscribe_in(
+        &picker,
+        window,
+        |app, _, event: &InputEvent, window, cx| {
+            if matches!(event, InputEvent::PressEnter { .. }) {
+                add(app, window, cx);
             }
         },
     ));
