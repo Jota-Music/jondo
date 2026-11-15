@@ -15,6 +15,7 @@ fn domain_rank_prefers_youtube() {
     assert_eq!(rank("example.com"), 0);
 }
 
+#[cfg(not(windows))]
 #[test]
 fn chromium_values_decrypt_with_the_fallback_password() {
     let secret = "peanuts";

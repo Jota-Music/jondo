@@ -128,7 +128,7 @@ fn hwnd(window: &gpui::Window) -> Option<*mut c_void> {
 
     let handle = HasWindowHandle::window_handle(window).ok()?;
     match handle.as_raw() {
-        RawWindowHandle::Win32(handle) => Some(handle.hwnd.as_ptr()),
+        RawWindowHandle::Win32(handle) => Some(handle.hwnd.get() as *mut c_void),
         _ => None,
     }
 }
