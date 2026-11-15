@@ -80,12 +80,14 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> im
         .overflow_hidden();
 
     if app.store.backdrop {
-        body = body.child(super::backdrop::show(
-            accent,
-            viewport.width.as_f32(),
-            viewport.height.as_f32(),
+        body = body.child(super::backdrop::show(super::backdrop::Backdrop {
+            dominant: accent,
+            width: viewport.width.as_f32(),
+            height: viewport.height.as_f32(),
             motes,
-        ));
+            strength: f32::from(app.store.glow) / 100.0,
+            mote: f32::from(app.store.mote) / 100.0,
+        }));
     }
 
     if panel {

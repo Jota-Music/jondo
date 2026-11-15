@@ -6,8 +6,9 @@ use serde_json::{Map, Value};
 use crate::shared::music::domain::{Follow, Playlist, Room, Song};
 
 use super::{
-    LocalPlaylist, SpotifyAuth, Store, SyncStatus, enabled, full, full_volume, interval, on,
-    sync_import_default, sync_interval_default, zero,
+    LocalPlaylist, SpotifyAuth, Store, SyncStatus, enabled, full, full_volume, glow_default,
+    interval, mote_default, on, sync_import_default, sync_interval_default, unset_glow, unset_mote,
+    zero,
 };
 
 /// The shape `state.json` takes on disk. Every section holds what one part of
@@ -148,6 +149,10 @@ struct Settings {
     always_on_top: bool,
     #[serde(default = "enabled", skip_serializing_if = "on")]
     backdrop: bool,
+    #[serde(default = "glow_default", skip_serializing_if = "unset_glow")]
+    glow: u8,
+    #[serde(default = "mote_default", skip_serializing_if = "unset_mote")]
+    mote: u8,
     #[serde(default = "sync_import_default", skip_serializing_if = "on")]
     trim_memory: bool,
     #[serde(default = "enabled", skip_serializing_if = "on")]
@@ -164,6 +169,8 @@ impl Default for Settings {
             compact: false,
             always_on_top: false,
             backdrop: enabled(),
+            glow: glow_default(),
+            mote: mote_default(),
             trim_memory: sync_import_default(),
             pause_on_disconnect: enabled(),
             pause_on_focus: enabled(),
@@ -361,6 +368,8 @@ impl From<&Store> for Snapshot {
             compact,
             always_on_top,
             backdrop,
+            glow,
+            mote,
             order,
             follows,
             saved,
@@ -438,6 +447,8 @@ impl From<&Store> for Snapshot {
                 compact: *compact,
                 always_on_top: *always_on_top,
                 backdrop: *backdrop,
+                glow: *glow,
+                mote: *mote,
                 trim_memory: *trim_memory,
                 pause_on_disconnect: *pause_on_disconnect,
                 pause_on_focus: *pause_on_focus,
@@ -513,6 +524,8 @@ impl From<Snapshot> for Store {
             compact: settings.compact,
             always_on_top: settings.always_on_top,
             backdrop: settings.backdrop,
+            glow: settings.glow,
+            mote: settings.mote,
             order: library.order.ids,
             follows: follows.items,
             saved: saved.items,

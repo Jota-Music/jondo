@@ -6,6 +6,9 @@ pub(super) fn spanish(key: &str) -> &str {
         "Language" => "Idioma",
         "Visuals" => "Visual",
         "Ambient background" => "Fondo ambiental",
+        "Glow intensity" => "Intensidad del brillo",
+        "Particle size" => "Tamaño de las partículas",
+        "Reset" => "Restablecer",
         "A soft glow in the colour of the playing cover, behind the content." => {
             "Un brillo suave con el color de la portada en reproducción, detrás del contenido."
         }

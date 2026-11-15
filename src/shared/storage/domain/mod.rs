@@ -80,6 +80,29 @@ pub(super) fn interval(value: &u64) -> bool {
     *value == sync_interval_default()
 }
 
+/// How strongly the ambient glow reads, as a percentage: the number the
+/// settings field shows, so the store and the panel never disagree.
+pub const GLOW: u8 = 12;
+
+/// The dust's size, as a percentage of the radius the field paints.
+pub const MOTE: u8 = 100;
+
+pub(super) fn glow_default() -> u8 {
+    GLOW
+}
+
+pub(super) fn mote_default() -> u8 {
+    MOTE
+}
+
+pub(super) fn unset_glow(value: &u8) -> bool {
+    *value == glow_default()
+}
+
+pub(super) fn unset_mote(value: &u8) -> bool {
+    *value == mote_default()
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Store {
     pub playlists: Vec<LocalPlaylist>,
@@ -98,6 +121,10 @@ pub struct Store {
     /// The ambient glow behind the content. On unless it was turned off: the
     /// app looks like this out of the box, so a fresh install needs no setup.
     pub backdrop: bool,
+    /// How strongly the glow reads and how big its dust is, as percentages:
+    /// both depend on the screen they are seen on, so they are knobs.
+    pub glow: u8,
+    pub mote: u8,
     pub order: Vec<String>,
     pub follows: Vec<crate::shared::music::domain::Follow>,
     pub saved: Vec<Playlist>,
@@ -166,6 +193,8 @@ impl Default for Store {
             compact: false,
             always_on_top: false,
             backdrop: true,
+            glow: GLOW,
+            mote: MOTE,
             order: Vec::new(),
             follows: Vec::new(),
             saved: Vec::new(),

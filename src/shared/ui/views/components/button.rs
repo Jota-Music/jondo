@@ -137,7 +137,58 @@ pub fn icon_flat_in(
     on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
     let label = icon.label();
-    let named = label.to_owned().into();
+    flat(
+        scope,
+        id,
+        icon,
+        size,
+        color,
+        button,
+        enabled,
+        label.to_owned().into(),
+        on_click,
+    )
+}
+
+/// The same button under a name of its own, for a glyph that stands for more
+/// than one action: the reset arrow is not a reload.
+#[allow(clippy::too_many_arguments)]
+pub fn icon_named(
+    id: impl Into<ElementId>,
+    icon: Icon,
+    size: f32,
+    color: Rgba,
+    button: f32,
+    enabled: bool,
+    label: &'static str,
+    on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    flat(
+        Scope::Both,
+        id,
+        icon,
+        size,
+        color,
+        button,
+        enabled,
+        label.into(),
+        on_click,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn flat(
+    scope: Scope,
+    id: impl Into<ElementId>,
+    icon: Icon,
+    size: f32,
+    color: Rgba,
+    button: f32,
+    enabled: bool,
+    label: SharedString,
+    on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    let named = label.clone();
     actionable(
         hover::hover_in(
             scope,
@@ -163,7 +214,7 @@ pub fn icon_flat_in(
         named,
         enabled,
     )
-    .tooltip(move |window, cx| Tooltip::new(label).build(window, cx))
+    .tooltip(move |window, cx| Tooltip::new(label.clone()).build(window, cx))
 }
 
 #[allow(clippy::too_many_arguments)]

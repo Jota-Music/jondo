@@ -118,7 +118,7 @@ fn item(
         Item::Header => header(),
         Item::Account => account(app, window, cx),
         Item::Language => language(app, cx),
-        Item::Visuals => visuals(app, cx),
+        Item::Visuals => visuals(app, window, cx),
         #[cfg(not(target_os = "android"))]
         Item::Discord => discord(app, cx),
         #[cfg(target_os = "android")]

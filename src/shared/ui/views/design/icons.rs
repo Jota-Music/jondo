@@ -112,6 +112,7 @@ pub const SETTINGS: Icon = Icon::Settings;
 pub const SEARCH: Icon = Icon::Search;
 pub const SEARCH_BOLD: Icon = Icon::SearchBold;
 pub const REFRESH_CW: Icon = Icon::RefreshCw;
+pub const ROTATE_CCW: Icon = Icon::RotateCcw;
 pub const X: Icon = Icon::X;
 pub const CHEVRON_UP: Icon = Icon::ChevronUp;
 pub const CHEVRON_DOWN: Icon = Icon::ChevronDown;

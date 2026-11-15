@@ -453,6 +453,22 @@ fn the_ambient_background_switch_persists(cx: &mut TestAppContext) {
         !jondo::shared::storage::Store::load().backdrop,
         "the switch must survive a reload"
     );
+
+    // The two knobs are percentages over the same store: each one holds the
+    // range its field reads well in, so no keystroke can paint a glow away.
+    app.update(cx, |app, cx| {
+        app.set_glow(90, cx);
+        app.set_mote(1, cx);
+        cx.notify();
+    });
+    frame(cx);
+
+    let store = jondo::shared::storage::Store::load();
+    assert_eq!(
+        (store.glow, store.mote),
+        (50, 40),
+        "a knob clamps to its own range"
+    );
 }
 
 /// The phone frame is Jota's: the page heads carry 12, the shelf hangs its

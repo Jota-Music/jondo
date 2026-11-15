@@ -1,11 +1,12 @@
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, Context, InteractiveElement, IntoElement, ParentElement,
+    AnyElement, Context, Div, InteractiveElement, IntoElement, ParentElement,
     StatefulInteractiveElement, Styled, Window, div,
 };
 
 use crate::music::rooms::{self, Status, TokenState};
 use crate::shared::i18n::{self, t};
+use crate::shared::storage::domain::{GLOW, MOTE};
 use crate::shared::ui::views::components::{button, switch, text};
 use crate::shared::ui::views::design::icons::{self, Icon};
 use crate::shared::ui::views::design::theme;
@@ -68,8 +69,16 @@ pub(super) fn language(app: &mut Jondo, cx: &mut Context<Jondo>) -> AnyElement {
     )
 }
 
-pub(super) fn visuals(app: &mut Jondo, cx: &mut Context<Jondo>) -> AnyElement {
+pub(super) fn visuals(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> AnyElement {
     let enabled = app.store.backdrop;
+    let (glow, mote) = (app.store.glow, app.store.mote);
+    let glow_field = app.field("visuals-glow", &glow.to_string(), "", window, cx);
+    let mote_field = app.field("visuals-mote", &mote.to_string(), "", window, cx);
+    // The arrow only acts, and only reads as live, while there is something to
+    // undo: the glow is on and the number is off the one the app ships with.
+    let reset_glow = enabled && glow != GLOW;
+    let reset_mote = enabled && mote != MOTE;
+
     section(
         Icon::Palette,
         t("Visuals"),
@@ -77,36 +86,117 @@ pub(super) fn visuals(app: &mut Jondo, cx: &mut Context<Jondo>) -> AnyElement {
         div()
             .debug_selector(|| "settings-visuals".to_owned())
             .flex()
-            .items_start()
-            .justify_between()
-            .gap(theme::unit(12.0))
+            .flex_col()
+            .gap(theme::unit(16.0))
             .child(
                 div()
-                    .flex_1()
-                    .min_w(theme::unit(0.0))
                     .flex()
-                    .flex_col()
-                    .gap(theme::unit(4.0))
-                    .child(text::text(t("Ambient background"), 14.0, theme::ZINC_200))
-                    .child(text::text(
-                        t("A soft glow in the colour of the playing cover, behind the content."),
-                        12.0,
-                        theme::FAINT,
-                    )),
+                    .items_start()
+                    .justify_between()
+                    .gap(theme::unit(12.0))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w(theme::unit(0.0))
+                            .flex()
+                            .flex_col()
+                            .gap(theme::unit(4.0))
+                            .child(text::text(
+                                t("Ambient background"),
+                                14.0,
+                                theme::ZINC_200,
+                            ))
+                            .child(text::text(
+                                t(
+                                    "A soft glow in the colour of the playing cover, behind the content.",
+                                ),
+                                12.0,
+                                theme::FAINT,
+                            )),
+                    )
+                    .child(
+                        switch(
+                            "visuals-backdrop",
+                            enabled,
+                            app.accent,
+                            cx.listener(|app, value: &bool, _, cx| {
+                                app.set_backdrop(*value, cx);
+                                cx.notify();
+                            }),
+                        )
+                        .into_any_element(),
+                    ),
             )
             .child(
-                switch(
-                    "visuals-backdrop",
-                    enabled,
-                    app.accent,
-                    cx.listener(|app, value: &bool, _, cx| {
-                        app.set_backdrop(*value, cx);
-                        cx.notify();
-                    }),
-                )
-                .into_any_element(),
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(theme::unit(16.0))
+                    .child(percent(
+                        t("Glow intensity"),
+                        field::disabled(&glow_field, !enabled),
+                        reset_glow,
+                        button::icon_named(
+                            "visuals-glow-reset",
+                            icons::ROTATE_CCW,
+                            13.0,
+                            theme::FAINT,
+                            32.0,
+                            reset_glow,
+                            t("Reset"),
+                            cx.listener(|app, _: &gpui::ClickEvent, window, cx| {
+                                app.set_glow(GLOW, cx);
+                                app.set_field("visuals-glow", &GLOW.to_string(), window, cx);
+                                cx.notify();
+                            }),
+                        ),
+                    ))
+                    .child(percent(
+                        t("Particle size"),
+                        field::disabled(&mote_field, !enabled),
+                        reset_mote,
+                        button::icon_named(
+                            "visuals-mote-reset",
+                            icons::ROTATE_CCW,
+                            13.0,
+                            theme::FAINT,
+                            32.0,
+                            reset_mote,
+                            t("Reset"),
+                            cx.listener(|app, _: &gpui::ClickEvent, window, cx| {
+                                app.set_mote(MOTE, cx);
+                                app.set_field("visuals-mote", &MOTE.to_string(), window, cx);
+                                cx.notify();
+                            }),
+                        ),
+                    )),
             ),
     )
+}
+
+/// A percentage the user sets once and reads back: a field, its unit and the
+/// arrow that returns it to the value the app ships with. A reset with nothing
+/// to undo sits dimmed, so the row says which knob is off its default.
+fn percent(label: &str, field: Div, reset: bool, arrow: impl IntoElement) -> Div {
+    div()
+        .flex()
+        .flex_col()
+        .gap(theme::unit(6.0))
+        .child(text::text(label, 14.0, theme::ZINC_200))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(theme::unit(8.0))
+                .child(field.w(theme::unit(72.0)))
+                .child(text::text("%", 12.0, theme::FAINT))
+                .child(
+                    div()
+                        .flex()
+                        .when(!reset, |this| this.opacity(0.35))
+                        .child(arrow),
+                ),
+        )
 }
 
 #[cfg(not(target_os = "android"))]
@@ -301,6 +391,53 @@ pub(super) fn wire(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>
                 cx.notify();
             }
             _ => {}
+        },
+    ));
+
+    // The glow's knobs commit once the field is done, so the intermediate
+    // states of typing never reach the store and the panel cannot fight the
+    // keyboard. The setter clamps, and the field is handed back its own value.
+    knob(
+        app,
+        window,
+        cx,
+        "visuals-glow",
+        |app| app.store.glow,
+        Jondo::set_glow,
+    );
+    knob(
+        app,
+        window,
+        cx,
+        "visuals-mote",
+        |app| app.store.mote,
+        Jondo::set_mote,
+    );
+}
+
+fn knob(
+    app: &mut Jondo,
+    window: &mut Window,
+    cx: &mut Context<Jondo>,
+    key: &'static str,
+    read: fn(&Jondo) -> u8,
+    change: fn(&mut Jondo, u8, &gpui::App),
+) {
+    use gpui_kit::component::input::InputEvent;
+
+    let field = app.field(key, &read(app).to_string(), "", window, cx);
+    app.subscriptions.push(cx.subscribe_in(
+        &field,
+        window,
+        move |app, _, event: &InputEvent, window, cx| {
+            if !matches!(event, InputEvent::Blur | InputEvent::PressEnter { .. }) {
+                return;
+            }
+
+            let percent = app.value(key, cx).trim().parse::<u8>().unwrap_or(read(app));
+            change(app, percent, cx);
+            app.set_field(key, &read(app).to_string(), window, cx);
+            cx.notify();
         },
     ));
 }

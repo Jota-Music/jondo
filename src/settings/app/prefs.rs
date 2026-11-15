@@ -1,6 +1,10 @@
 use crate::shared::i18n::t;
 use crate::shell::app::Jondo;
 
+/// The range each glow knob accepts, as the percentage its field shows.
+const GLOW_RANGE: (u8, u8) = (5, 50);
+const MOTE_RANGE: (u8, u8) = (40, 250);
+
 /// Preferences the panels write. The store is the app's, so the views ask for
 /// the change instead of touching it and remembering to persist it themselves.
 impl Jondo {
@@ -26,6 +30,19 @@ impl Jondo {
 
     pub fn set_backdrop(&mut self, on: bool, cx: &gpui::App) {
         self.store.backdrop = on;
+        self.persist(cx);
+    }
+
+    /// The glow's two knobs, as the percentage their field shows. The range is
+    /// the one the field reads well in, and it is held here so the field, a
+    /// reset and any later caller land on the same number.
+    pub fn set_glow(&mut self, percent: u8, cx: &gpui::App) {
+        self.store.glow = percent.clamp(GLOW_RANGE.0, GLOW_RANGE.1);
+        self.persist(cx);
+    }
+
+    pub fn set_mote(&mut self, percent: u8, cx: &gpui::App) {
+        self.store.mote = percent.clamp(MOTE_RANGE.0, MOTE_RANGE.1);
         self.persist(cx);
     }
 

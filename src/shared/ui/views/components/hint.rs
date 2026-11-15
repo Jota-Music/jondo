@@ -1,9 +1,9 @@
-use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    App, BoxShadow, Div, ElementId, InteractiveElement, IntoElement, ParentElement, Rgba, Stateful,
+    App, Div, ElementId, InteractiveElement, IntoElement, ParentElement, Rgba, Stateful,
     StatefulInteractiveElement, Styled, Window, div, relative,
 };
 
+use crate::shared::ui::views::components::glow;
 use crate::shared::ui::views::components::text;
 use crate::shared::ui::views::design::icons::{self, Icon};
 use crate::shared::ui::views::design::theme;
@@ -36,7 +36,7 @@ pub fn hint(hint: Hint<'_>, action: Option<Stateful<Div>>) -> Div {
                 .gap(theme::unit(20.0))
                 .px(theme::unit(24.0))
                 .py(theme::unit(32.0))
-                .child(glow(tint))
+                .child(halo(tint))
                 .child(badge(hint.icon, tint))
                 .child(
                     div()
@@ -97,7 +97,7 @@ pub fn message(content: impl IntoElement) -> Div {
         .child(content)
 }
 
-fn glow(tint: Rgba) -> Div {
+fn halo(tint: Rgba) -> Div {
     div()
         .absolute()
         .top(theme::unit(0.0))
@@ -105,22 +105,7 @@ fn glow(tint: Rgba) -> Div {
         .right(theme::unit(0.0))
         .flex()
         .justify_center()
-        .child(
-            div()
-                .w(theme::unit(128.0))
-                .h(theme::unit(128.0))
-                .rounded_full()
-                .when(!cfg!(target_os = "android"), |this| {
-                    this.shadow(vec![
-                        BoxShadow::new(
-                            theme::unit(0.0),
-                            theme::unit(0.0),
-                            theme::alpha(tint, 0.35).into(),
-                        )
-                        .blur_radius(theme::unit(64.0)),
-                    ])
-                }),
-        )
+        .child(glow::show(tint, 0.2, 1.0, theme::unit(160.0)))
 }
 
 fn badge(icon: Icon, tint: Rgba) -> Div {
