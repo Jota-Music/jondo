@@ -211,8 +211,8 @@ pub(super) fn bar(
                 on_top,
                 control,
                 glyph,
-                cx.listener(|app, _: &gpui::ClickEvent, _, cx| {
-                    app.toggle_pin(cx);
+                cx.listener(|app, _: &gpui::ClickEvent, window, cx| {
+                    app.toggle_pin(window);
                     cx.notify();
                 }),
             ))

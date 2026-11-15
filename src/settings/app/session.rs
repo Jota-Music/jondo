@@ -445,14 +445,22 @@ impl Jondo {
         }
     }
 
-    pub fn toggle_pin(&mut self, _cx: &mut gpui::Context<Self>) {
-        if !pin::pinnable() {
-            self.notify(t("This session does not let a window stay on top."));
+    pub fn toggle_pin(&mut self, window: &mut gpui::Window) {
+        let on = !self.store.always_on_top;
+
+        if pin::deferred() {
+            if !pin::restart() {
+                self.notify(t("This session does not let a window stay on top."));
+                return;
+            }
+
+            self.store.always_on_top = on;
+            self.save_store();
+            window.remove_window();
             return;
         }
 
-        let on = !self.store.always_on_top;
-        if !pin::set(on) {
+        if !pin::pinnable() || !pin::set(on) {
             self.notify(t("This session does not let a window stay on top."));
             return;
         }
