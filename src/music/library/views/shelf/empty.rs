@@ -18,7 +18,7 @@ pub(super) fn empty(app: &mut Jondo, cx: &mut Context<Jondo>, scope: Scope) -> A
             Filter::All => hint::hint(
                 Hint {
                     icon: icons::HEART_FILL,
-                    tint: theme::DANGER,
+                    tint: app.accent,
                     title: t("Nothing to see yet"),
                     body: t(
                         "Follow a Spotify profile or a YouTube channel and it will show up here.",
