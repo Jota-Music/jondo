@@ -87,6 +87,57 @@ pub fn install() {
     LOUD.store(asked.is_some(), Ordering::Relaxed);
     log::set_max_level(asked.unwrap_or(log::LevelFilter::Info));
     let _ = log::set_logger(SINK.get_or_init(sink));
+
+    // The ring above dies with the process, and a release build aborts on the
+    // spot, so a panic that lands after the window is gone leaves nothing to
+    // read. This one line survives it.
+    let stderr = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        crash(&describe(info));
+        stderr(info);
+    }));
+}
+
+fn describe(info: &std::panic::PanicHookInfo<'_>) -> String {
+    let payload = info.payload();
+    let message = payload
+        .downcast_ref::<&str>()
+        .map(|text| (*text).to_owned())
+        .or_else(|| payload.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "unknown panic".to_owned());
+    let place = info
+        .location()
+        .map(|at| format!("{}:{}:{}", at.file(), at.line(), at.column()))
+        .unwrap_or_default();
+
+    format!(
+        "thread '{}' at {place}: {message}",
+        std::thread::current().name().unwrap_or("unnamed")
+    )
+}
+
+/// Appends a panic to the file the user can hand over, next to the state. A
+/// crash that cannot be read costs the whole report.
+fn crash(line: &str) {
+    let Some(dir) = crate::shared::storage::dir() else {
+        return;
+    };
+
+    let _ = std::fs::create_dir_all(&dir);
+    let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(dir.join("crash.log"))
+    else {
+        return;
+    };
+
+    let _ = writeln!(
+        file,
+        "{} [PANIC] {line}",
+        crate::shared::kernel::app::clock::now_ms()
+    );
+    let _ = file.flush();
 }
 
 fn push(line: String) {

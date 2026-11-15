@@ -21,6 +21,20 @@ fn a_missing_system_ui_font_is_not_reported() {
 }
 
 #[test]
+fn a_panic_is_kept_next_to_the_state() {
+    let dir = std::env::temp_dir().join(format!("jondo-crash-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    crate::shared::storage::use_home(&dir);
+
+    crash("thread 'main' at src/main.rs:1:1: boom");
+    crash("thread 'jondo-store' at src/x.rs:2:2: second");
+
+    let text = std::fs::read_to_string(dir.join("crash.log")).expect("the crash log");
+    assert!(text.contains("boom"), "{text}");
+    assert_eq!(text.lines().count(), 2, "{text}");
+}
+
+#[test]
 fn the_buffer_keeps_the_last_lines() {
     for index in 0..LIMIT + 5 {
         push(format!("line {index}"));
