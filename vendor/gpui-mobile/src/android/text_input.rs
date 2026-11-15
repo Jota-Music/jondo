@@ -47,18 +47,23 @@ pub(super) fn drain(
             continue;
         }
         if event.kind == 5 {
-            // The user hid the keyboard (back) but the input keeps focus: unlike 4 this
-            // is not an Escape, which would close whatever owns the field (a search
-            // overlay, with its query). See `jni::keyboard_hidden_by_user`.
+            // The user hid the keyboard (back) but the input keeps focus: this
+            // only records the dismissal. Back never reaches the field as
+            // Escape, which would close whatever owns it. See
+            // `jni::keyboard_hidden_by_user`.
             finish_composition(slot);
             super::jni::keyboard_hidden_by_user();
             continue;
         }
         if event.kind == 4 {
+            // The IME's action key (Done, Send, Go) or a hardware Enter. It must
+            // reach the field as Enter: single-line inputs emit `PressEnter`,
+            // multi-line ones insert a line break. Escape here would dismiss the
+            // sheet or overlay that owns the field instead of submitting it.
             finish_composition(slot);
             input(PlatformInput::KeyDown(KeyDownEvent {
                 keystroke: Keystroke {
-                    key: "escape".into(),
+                    key: "enter".into(),
                     key_char: None,
                     modifiers: Modifiers::default(),
                 },

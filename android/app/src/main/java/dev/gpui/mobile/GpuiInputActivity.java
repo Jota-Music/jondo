@@ -32,7 +32,7 @@ public class GpuiInputActivity extends NativeActivity {
         super.onCreate(state);
     }
 
-    public void gpuiShowKeyboard(int keyboardType, long session) {
+    public void gpuiShowKeyboard(int keyboardType, long session, boolean singleLine) {
         runOnUiThread(() -> {
             if (input == null) {
                 input = new InputProxy();
@@ -41,7 +41,8 @@ public class GpuiInputActivity extends NativeActivity {
                 addContentView(input, new ViewGroup.LayoutParams(1, 1));
             }
             input.reset(session);
-            int type = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE;
+            int type = InputType.TYPE_CLASS_TEXT;
+            if (!singleLine) type |= InputType.TYPE_TEXT_FLAG_MULTI_LINE;
             switch (keyboardType) {
                 case 1: type = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS; break;
                 case 2: type = InputType.TYPE_CLASS_PHONE; break;
@@ -50,7 +51,9 @@ public class GpuiInputActivity extends NativeActivity {
                 case 5: type = InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL; break;
             }
             input.setInputType(type);
-            input.setImeOptions(EditorInfo.IME_FLAG_NO_EXTRACT_UI);
+            int options = EditorInfo.IME_FLAG_NO_EXTRACT_UI;
+            if (singleLine) options |= EditorInfo.IME_ACTION_DONE;
+            input.setImeOptions(options);
             input.requestFocus();
             InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
             imm.restartInput(input);
@@ -95,6 +98,10 @@ public class GpuiInputActivity extends NativeActivity {
         }
 
         @Override public boolean onKeyDown(int code, KeyEvent event) {
+            if (code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_NUMPAD_ENTER) {
+                nativeIme(session, 4, "", 0, 0);
+                return true;
+            }
             if (code == KeyEvent.KEYCODE_DEL && getText().length() == 0 && !marked) {
                 nativeIme(session, 3, "", 1, 0);
                 return true;
@@ -206,15 +213,20 @@ public class GpuiInputActivity extends NativeActivity {
                         if (event.getAction() == KeyEvent.ACTION_DOWN) deleteSurroundingText(1, 0);
                         return true;
                     }
-                    if (event.getKeyCode() == KeyEvent.KEYCODE_ENTER) {
-                        if (event.getAction() == KeyEvent.ACTION_DOWN) commitText("\n", 1);
+                    if (event.getKeyCode() == KeyEvent.KEYCODE_ENTER
+                            || event.getKeyCode() == KeyEvent.KEYCODE_NUMPAD_ENTER) {
+                        if (event.getAction() == KeyEvent.ACTION_DOWN) nativeIme(session, 4, "", 0, 0);
                         return true;
                     }
                     return super.sendKeyEvent(event);
                 }
                 @Override public boolean performEditorAction(int action) {
                     if (connectionSession != session) return false;
-                    if (action == EditorInfo.IME_ACTION_DONE) {
+                    if (action == EditorInfo.IME_ACTION_DONE
+                            || action == EditorInfo.IME_ACTION_GO
+                            || action == EditorInfo.IME_ACTION_SEARCH
+                            || action == EditorInfo.IME_ACTION_SEND
+                            || action == EditorInfo.IME_ACTION_NEXT) {
                         finishComposingText();
                         nativeIme(session, 4, "", 0, 0);
                         return true;

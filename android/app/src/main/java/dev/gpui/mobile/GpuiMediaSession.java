@@ -45,6 +45,7 @@ public class GpuiMediaSession {
     private static String sAlbum = "";
     private static long sDurationMs = 0;
     private static Bitmap sArtwork;
+    private static int sArtworkRequest;
     private static boolean sPlaying;
     private static boolean sNotificationPermissionRequested;
 
@@ -274,15 +275,40 @@ public class GpuiMediaSession {
     }
 
     /**
-     * Attach the cover already decoded on disk. The notification and the lock
-     * screen read it from the metadata bitmap, so it has to be re-published.
+     * Attach the cover the source named, by URL. It is fetched and decoded off
+     * the UI thread so a slow image never stalls playback, and nothing is
+     * written to the user's disk. A newer request wins over one still in
+     * flight, so skipping tracks cannot show an older cover.
      */
-    public static void setArtwork(String path) {
-        if (sSession == null || path == null) return;
-        Bitmap decoded = BitmapFactory.decodeFile(path);
-        if (decoded == null) return;
-        sArtwork = decoded;
-        pushMetadata();
+    public static void setArtwork(String url) {
+        if (sSession == null || url == null || url.isEmpty()) return;
+
+        final int request = ++sArtworkRequest;
+        final String source = url;
+        new Thread(() -> {
+            Bitmap decoded;
+            try {
+                java.net.URLConnection connection = new java.net.URL(source).openConnection();
+                // a cover that never answers must not hold a thread for the
+                // rest of the session
+                connection.setConnectTimeout(8000);
+                connection.setReadTimeout(8000);
+                try (java.io.InputStream in = connection.getInputStream()) {
+                    decoded = BitmapFactory.decodeStream(in);
+                }
+            } catch (Exception error) {
+                Log.w(TAG, "artwork failed: " + error);
+                return;
+            }
+            if (decoded == null) return;
+            final Bitmap cover = decoded;
+            if (sActivity == null) return;
+            sActivity.runOnUiThread(() -> {
+                if (request != sArtworkRequest) return;
+                sArtwork = cover;
+                pushMetadata();
+            });
+        }, "jondo-artwork").start();
     }
 
     private static void pushMetadata() {

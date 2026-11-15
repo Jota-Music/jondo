@@ -251,7 +251,7 @@ fn font_has_cbdt_tables(data: &[u8]) -> bool {
 }
 
 /// Reads only the table directory of a font file, so deciding whether the
-/// system emoji font is usable never loads its ten megabytes.
+/// system emoji font is usable never loads the whole of it.
 fn font_file_has_cbdt_tables(path: &str) -> bool {
     use std::io::{Read, Seek, SeekFrom};
 
@@ -287,7 +287,7 @@ fn map_font(path: &str) -> std::io::Result<std::borrow::Cow<'static, [u8]>> {
 /// `AAssetManager`.
 ///
 /// `path` is relative to the `assets/` directory in the APK (e.g.
-/// `"fonts/NotoColorEmoji.ttf"`).
+/// `"fonts/NotoEmoji.ttf"`).
 fn load_asset_bytes(
     asset_manager: &ndk::asset::AssetManager,
     path: &str,
@@ -303,9 +303,9 @@ fn load_asset_bytes(
         .ok_or_else(|| anyhow::anyhow!("asset not found: {path}"))?;
 
     // An asset stored uncompressed is mmapped straight from the APK. Handing
-    // that view to the shaper keeps the ten megabyte emoji font out of the
-    // process's own pages; leaking the handle is what keeps the view alive for
-    // the life of the process.
+    // that view to the shaper keeps the emoji font out of the process's own
+    // pages; leaking the handle is what keeps the view alive for the
+    // life of the process.
     if !asset.is_allocated() {
         if let Ok(buffer) = asset.buffer() {
             let (pointer, length) = (buffer.as_ptr(), buffer.len());
@@ -324,8 +324,13 @@ fn load_asset_bytes(
     Ok(Cow::Owned(bytes))
 }
 
-/// The bundled CBDT emoji font, relative to the APK's `assets/` directory.
-const BUNDLED_EMOJI_FONT: &str = "fonts/NotoColorEmoji.ttf";
+/// The bundled emoji font, relative to the APK's `assets/` directory.
+///
+/// It is the monochrome `NotoEmoji` (outline) font: the colour `NotoColorEmoji`
+/// is a ten megabyte bitmap font, and this one covers the same emoji in a
+/// twelfth of the bytes. The system font wins wherever swash can render it, so
+/// the bundled copy only paints the devices the system font cannot.
+const BUNDLED_EMOJI_FONT: &str = "fonts/NotoEmoji.ttf";
 
 /// The text system still waiting for the bundled emoji font. On the host-driven
 /// path the platform can start before `set_host_activity` has provided an
@@ -344,7 +349,7 @@ pub(crate) fn load_deferred_emoji_font() {
     }) {
         Some(Ok(bytes)) => {
             log::info!(
-                "loaded bundled CBDT emoji font from assets ({} bytes)",
+                "loaded bundled emoji font from assets ({} bytes)",
                 bytes.len()
             );
             if let Err(e) = text_system.add_fonts(vec![bytes]) {
@@ -416,8 +421,8 @@ impl AndroidPlatform {
                 // Emoji fonts — loaded so glyphs like 🦀 ✅ ❤️ render.
                 // NOTE: On Android 13+ (API 33+) the system NotoColorEmoji.ttf
                 // uses COLR v1 color outlines which swash cannot render.  We
-                // detect this below and load a bundled CBDT-based fallback
-                // instead.  The flag font is still useful regardless.
+                // detect this below and load a bundled fallback instead.  The
+                // flag font is still useful regardless.
                 "/system/fonts/NotoColorEmojiFlags.ttf",
                 // Serif (fallback)
                 "/system/fonts/NotoSerif-Regular.ttf",
@@ -440,8 +445,8 @@ impl AndroidPlatform {
             //
             // swash can render CBDT/CBLC bitmap emoji and COLR v0 colour
             // outlines, but NOT COLR v1 (used by Android 13+ / API 33+).
-            // If the system font lacks CBDT tables we load a bundled
-            // CBDT-based NotoColorEmoji from the APK assets instead.
+            // If the system font lacks CBDT tables we load the bundled
+            // monochrome NotoEmoji from the APK assets instead.
             let system_emoji_path = "/system/fonts/NotoColorEmoji.ttf";
             let mut emoji_loaded = false;
 
@@ -463,7 +468,7 @@ impl AndroidPlatform {
 
             let mut emoji_deferred = false;
             if !emoji_loaded {
-                // Try loading the bundled CBDT NotoColorEmoji from APK assets.
+                // Try loading the bundled NotoEmoji from APK assets.
                 // The lock is held across the check, so a concurrent
                 // `set_host_activity` either provides the AssetManager first or
                 // finds the text system pending afterwards.
@@ -474,7 +479,7 @@ impl AndroidPlatform {
                     match result {
                         Ok(bytes) => {
                             log::info!(
-                                "loaded bundled CBDT emoji font from assets ({} bytes)",
+                                "loaded bundled emoji font from assets ({} bytes)",
                                 bytes.len()
                             );
                             font_data.push(bytes);

@@ -1577,6 +1577,10 @@ impl PlatformWindow for AndroidPlatformWindow {
         self.input_handler.borrow_mut().take()
     }
 
+    fn set_text_input_configuration(&mut self, configuration: gpui::TextInputConfiguration) {
+        super::jni::set_input_action(configuration.input_action);
+    }
+
     fn text_input_state_changed(&self, change: gpui::TextInputStateChange) {
         match change {
             gpui::TextInputStateChange::FocusGained => {

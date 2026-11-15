@@ -1607,6 +1607,29 @@ static SHOWN_KEYBOARD: std::sync::Mutex<Option<crate::KeyboardType>> = std::sync
 static DISMISSED_KEYBOARD: std::sync::Mutex<Option<crate::KeyboardType>> =
     std::sync::Mutex::new(None);
 
+/// The action the focused field wants on the IME's confirm key. GPUI forwards
+/// it with the text input configuration: `Enter` means the field takes line
+/// breaks, every other action means it submits.
+static INPUT_ACTION: std::sync::Mutex<gpui::TextInputAction> =
+    std::sync::Mutex::new(gpui::TextInputAction::Done);
+
+pub(crate) fn set_input_action(action: gpui::TextInputAction) {
+    {
+        let mut current = INPUT_ACTION.lock().expect("poisoned");
+        if *current == action {
+            return;
+        }
+        *current = action;
+    }
+
+    // The proxy belongs to the Activity and keeps the mode it was shown with,
+    // so a switch between a textarea and a single-line field has to restart it.
+    let shown = *SHOWN_KEYBOARD.lock().expect("poisoned");
+    if let Some(keyboard_type) = shown {
+        show_keyboard_android(keyboard_type);
+    }
+}
+
 /// IME event 5: the system already hid the keyboard; remember it for a tap to undo.
 pub(crate) fn keyboard_hidden_by_user() {
     let shown = SHOWN_KEYBOARD.lock().expect("poisoned").take();
@@ -1655,13 +1678,18 @@ pub fn show_keyboard_android(keyboard_type: crate::KeyboardType) {
         crate::KeyboardType::Decimal => 5,
     };
     let session = super::text_input::new_session();
+    let single_line = *INPUT_ACTION.lock().expect("poisoned") != gpui::TextInputAction::Enter;
     if let Err(error) = with_env(|env| {
         let activity = activity(env)?;
         env.call_method(
             &activity,
             jni::jni_str!("gpuiShowKeyboard"),
-            jni::jni_sig!("(IJ)V"),
-            &[JValue::Int(kind), JValue::Long(session as i64)],
+            jni::jni_sig!("(IJZ)V"),
+            &[
+                JValue::Int(kind),
+                JValue::Long(session as i64),
+                JValue::Bool(single_line),
+            ],
         )
         .map_err(|e| e.to_string())?;
         Ok(())
