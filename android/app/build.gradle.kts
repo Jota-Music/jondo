@@ -33,6 +33,14 @@ val keyAliasValue = signingValue("ANDROID_KEY_ALIAS", "keyAlias")
 val keyPasswordValue = signingValue("ANDROID_KEY_PASSWORD", "keyPassword")
 val hasReleaseKey = listOf(storePath, storePasswordValue, keyAliasValue, keyPasswordValue).all { it != null }
 
+// The architectures to package, told by the build script so a build for one
+// of them does not leave an empty package for the other.
+fun abis(): Array<String> =
+    ((project.findProperty("abis") as String?) ?: "arm64-v8a,x86_64")
+        .split(",")
+        .filter { it.isNotBlank() }
+        .toTypedArray()
+
 android {
     namespace = "com.jondo.jondo"
     compileSdk = 35
@@ -44,11 +52,8 @@ android {
         versionCode = versionCode(appVersion)
         versionName = appVersion
 
-        // Tell NativeActivity which .so to load.
-        // This must match the cdylib / example output name.
-        ndk {
-            abiFilters += listOf("arm64-v8a", "x86_64")
-        }
+        // The architectures come from the ABI splits below, which replace the
+        // ndk.abiFilters of the default config — Gradle refuses both at once.
 
         // Forward the library name to the manifest via a placeholder.
         manifestPlaceholders["nativeLibraryName"] = "jondo"
@@ -56,7 +61,7 @@ android {
 
     androidResources {
         // Stored, not deflated: an uncompressed asset is mmapped from the APK,
-        // so the ten megabyte emoji font costs no resident pages.
+        // so the emoji font costs no resident pages.
         noCompress += listOf("ttf")
     }
 
@@ -123,6 +128,18 @@ android {
                 "*/x86_64/libjondo.so",
                 "*/x86/libjondo.so"
             )
+        }
+    }
+
+    // One package per ABI: the universal one would carry the libraries of
+    // every architecture, so it downloads half of them unused and weighs twice
+    // as much for the phone that installs it.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include(*abis())
+            isUniversalApk = false
         }
     }
 

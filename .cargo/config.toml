@@ -11,6 +11,11 @@ dev = "watch --no-vcs-ignores -w src -w assets -w Cargo.toml -x run"
 # unwind tables the binary drops its whole .eh_frame section. Identical code
 # folding then merges the copies the monomorphized UI leaves behind. The build
 # id and the padding between code and data are dead weight in a stripped binary.
+#
+# The strip is spelled out here and not left to the profile: with the linker
+# running the LTO step, the profile's own `strip` leaves the symbol table
+# behind, and a stripped binary is eight megabytes smaller than an unstripped
+# one. `--strip-all` keeps the dynamic symbols a shared library needs.
 [target.x86_64-unknown-linux-gnu]
 rustflags = [
     "-C",
@@ -21,6 +26,8 @@ rustflags = [
     "link-arg=-Wl,--build-id=none",
     "-C",
     "link-arg=-Wl,-z,noseparate-code",
+    "-C",
+    "link-arg=-Wl,--strip-all",
 ]
 
 [target.aarch64-linux-android]
@@ -33,4 +40,6 @@ rustflags = [
     "link-arg=-Wl,--build-id=none",
     "-C",
     "link-arg=-Wl,-z,noseparate-code",
+    "-C",
+    "link-arg=-Wl,--strip-all",
 ]

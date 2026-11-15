@@ -17,9 +17,10 @@ path = "src/main.rs"
 
 [dependencies]
 gpui-kit = "0.9"
-# Icons the kit draws through its asset source. Its bundle reads the SVGs
-# from disk in debug builds, which has no crate directory to read on Android,
-# so the assets are embedded even there.
+# No direct use in this crate: it turns on rust-embed's `debug-embed`, which the
+# icon bundle inherits through feature unification. Without it the bundle reads
+# the SVGs from disk in debug builds, and an Android debug build has no crate
+# directory to read them from.
 rust-embed = { version = "8", default-features = false, features = ["debug-embed"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -133,8 +134,11 @@ gpui_pre = { version = "=0.3.11", package = "gpui-pre", features = ["test-suppor
 
 [profile.dev]
 opt-level = 1
-# rustc 1.99 + rust-lld drops the anonymous hidden symbols the crate emits
-# while incremental compilation is on, so the binary never links.
+# Off because rustc 1.99 + rust-lld drops the hidden symbols incremental
+# compilation internalizes (`anon.…llvm.…`, `drop_glue::<…>`) and the binary
+# stops linking. It links for a while and then fails after a few edits, so it
+# is not a build that can be trusted. On: the crate rebuilds in 3s instead of
+# 24s.
 incremental = false
 # Line tables only: the debug library is otherwise a quarter of a gigabyte and
 # every install pays for it.
@@ -145,12 +149,32 @@ lto = "fat"
 codegen-units = 1
 strip = true
 panic = "abort"
-# Fluidity first: layout, text shaping and paint all run again on every frame,
-# so the whole UI keeps full optimization. The size-optimized build made the
-# phone spend more time shaping the same strings than drawing them.
-opt-level = 2
+# Size first: the UI waits on the network and the disk, not on the processor,
+# and a binary at opt-level 2 carries three times the code of one at "z" — the
+# generic instantiations of the UI framework unfold into every caller.
+#
+# The packages below keep the full optimization: the ones that lay out, shape
+# text, paint and decode audio. Everything else is compiled for size, because
+# nothing else runs while a frame paints. `tests/build.rs` fails if one of
+# those packages drops to size.
+opt-level = "z"
+
+[profile.release.package.gpui-base]
+opt-level = 3
+
+[profile.release.package.gpui-component]
+opt-level = 3
+
+[profile.release.package.gpui-kit-assets]
+opt-level = 3
 
 [profile.release.package.gpui-pre]
+opt-level = 3
+
+[profile.release.package.gpui-pre-linux]
+opt-level = 3
+
+[profile.release.package.gpui-pre-platform]
 opt-level = 3
 
 [profile.release.package.gpui-pre-wgpu]
@@ -162,10 +186,19 @@ opt-level = 3
 [profile.release.package.cosmic-text]
 opt-level = 3
 
+[profile.release.package.swash]
+opt-level = 3
+
 [profile.release.package.rustybuzz]
 opt-level = 3
 
-[profile.release.package.swash]
+[profile.release.package.harfrust]
+opt-level = 3
+
+[profile.release.package.skrifa]
+opt-level = 3
+
+[profile.release.package.wgpu]
 opt-level = 3
 
 [profile.release.package.wgpu-core]
@@ -174,10 +207,37 @@ opt-level = 3
 [profile.release.package.wgpu-hal]
 opt-level = 3
 
+[profile.release.package.wgpu-types]
+opt-level = 3
+
 [profile.release.package.naga]
 opt-level = 3
 
 [profile.release.package.lyon]
+opt-level = 3
+
+[profile.release.package.tiny-skia]
+opt-level = 3
+
+[profile.release.package.usvg]
+opt-level = 3
+
+[profile.release.package.resvg]
+opt-level = 3
+
+[profile.release.package.moxcms]
+opt-level = 3
+
+[profile.release.package.image]
+opt-level = 3
+
+[profile.release.package.image-webp]
+opt-level = 3
+
+[profile.release.package.zune-jpeg]
+opt-level = 3
+
+[profile.release.package.png]
 opt-level = 3
 
 [profile.release.package.symphonia-core]

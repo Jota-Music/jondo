@@ -74,8 +74,8 @@ The parts that matter for living alongside Jota are inherited on purpose:
 - **Responsive UI**: full player at wide widths; compact bottom bar and a
   full-player sheet below 768px.
 - **Low memory**: AAC streamed with an eight-second buffer and 512KB chunks, so a
-  track is never downloaded whole; bounded cover texture cache and a capped
-  on-disk cover folder.
+  track is never downloaded whole; covers live in a bounded in-memory cache and
+  never on disk.
 
 **Spotify playback is deliberately not implemented.** Spotify supplies metadata;
 the audio always comes from YouTube.
@@ -136,6 +136,33 @@ flags are not optional: this crate lives inside a large git repo, and plain
 `cargo watch` spends minutes walking it (every `node_modules` and `.pnpm-store`)
 to discover `.gitignore` files before it runs anything.
 
+The release profile pays for fat LTO and a single codegen unit, so it is slow
+to build. When the optimized binary is what matters but the build time is not,
+the `quick` profile keeps the release optimizations with thin LTO and 16 codegen
+units:
+
+```bash
+cargo build --profile quick
+```
+
+The Android build takes the same two shapes, plus the ABI to build:
+
+```bash
+./android/build.sh --release --abi arm64-v8a   # one ABI, signed release APK
+./android/build.sh --release --quick           # thin LTO, minutes instead of quarters
+```
+
+Every build packages one APK per ABI. A universal package would carry the
+libraries of every architecture, so it downloads half of them unused and weighs
+twice as much for the phone that installs it:
+
+| Package | Runs on | Size |
+|---|---|---|
+| `jondo-arm64-v8a.apk` | 64-bit ARM phones and tablets | 13.3 MB |
+| `jondo-x86_64.apk` | emulators and x86-64 devices | 14.9 MB |
+
+The in-app update picks the one the device can run.
+
 Tests and lints match CI:
 
 ```bash
@@ -148,13 +175,18 @@ cargo test --all-targets
 
 | Platform | Status |
 |---|---|
-| Linux | Primary target; the release publishes an `.AppImage`. |
-| Android | Built from `android/` (a GPUI mobile activity) and published as `jondo.apk`. |
-| macOS | Builds from source. |
-| Windows | Builds from source. |
+| Linux | Primary target; the release publishes an `.AppImage` per processor. |
+| Android | Built from `android/` (a GPUI mobile activity) and published as one APK per processor. |
+| macOS | The release publishes an `.app` per processor and a `.dmg` for Apple Silicon. |
+| Windows | The release publishes the NSIS installer. |
 
-The release pipeline publishes `jondo.apk`, `jondo-x86_64.AppImage` and a
-`SHA256SUMS` next to them; the updater verifies the checksum before installing.
+The release pipeline publishes a package per processor — `jondo-arm64-v8a.apk`,
+`jondo-x86_64.apk`, `jondo-x86_64.AppImage`, `jondo-aarch64.AppImage`,
+`jondo-macos-aarch64.zip`, `jondo-macos-x86_64.zip` — plus
+`jondo-macos-arm64.dmg`, the Windows installer and a `SHA256SUMS` next to them;
+the updater picks the package its processor runs and verifies the checksum
+before installing. An Intel Mac takes `jondo-macos-x86_64.zip`; the `.dmg` is
+the Apple Silicon build.
 
 ## Data
 
@@ -163,18 +195,33 @@ for rich presence (Jota's by default), `JONDO_HOME` pins the state folder (a
 portable install), and `JONDO_REPO` (`owner/name`) enables the release check in
 About — without it the panel only links to the repository.
 
-State lives in `~/.config/jondo/state.json` with mode `0600`. Next to it:
+State lives in `~/.config/jondo/state.json` with mode `0600`. Next to it,
+`cache/` holds everything the sources answer again: one file per entity under the
+name it is addressed by, with the same envelope, naming and layout as Jota.
 
-- `playlists/` caches track lists, so entering a playlist already seen is instant.
-- `covers/` holds cover thumbnails; the folder is capped and trimmed.
-- `library.json` holds the last Spotify library, so the shelf paints before the
-  network answers.
+- `cache/spotify/playlists/` caches track lists, so entering a playlist already
+  seen is instant; `cache/spotify/library/` holds the playlists of an account, so
+  the shelf paints before the network answers. `albums/`, `artists/`,
+  `discography/`, `users/`, `follows/`, `friends/`, `contexts/` and `tracks/`
+  keep the rest of the catalog the same way.
+- `cache/youtube/streams/` keeps one resolved URL per video, for as long as its
+  signature lives. `links/` keeps the video a search settled on, one file per
+  song, and the session next to them the visitor token and the client that last
+  played. `channels/`, `videos/`, `playlists/`, `ids/`, `library/` and `page/`
+  cache the pages the same way: `page/` is the shelf snapshot the next launch
+  paints from.
+- `cache/queue.json` holds the queue, the biggest thing the app keeps.
 
-`state.json` keeps local playlists, the queue, volume, the Spotify session and the
-saved relay and rooms, grouped into sections (`youtube`, `spotify`, `sync`,
-`relay`, `rooms`, and the `order`/`follows`/`saved` lists with their `at`). Values
-equal to their default are not written. Delete it to reset the app; a file that
-cannot be read is kept as `state.bad` instead of being overwritten.
+Every folder that grows has a ceiling, and startup sweeps the entries that
+outlived their link and the temporary files a crash left behind. A write lands
+through `tmp` + `rename`, so a reader never sees half an entry.
+
+`state.json` keeps local playlists, volume, the Spotify session and the saved
+relay and rooms, grouped into sections (`youtube`, `spotify`, `sync`, `relay`,
+`rooms`, and the `order`/`follows`/`saved` lists with their `at`). The `youtube`
+section keeps only the pins the user fixed by hand; a learned pick is cache.
+Values equal to their default are not written. Delete it to reset the app; a file
+that cannot be read is kept as `state.bad` instead of being overwritten.
 
 ## Backup and sync
 
@@ -256,12 +303,14 @@ src/
 ## Release
 
 - Android: `./android/build.sh --release` builds both ABIs and packages a signed
-  APK. Set `ANDROID_KEYSTORE_FILE`, `ANDROID_KEYSTORE_PASSWORD`,
+  APK per ABI. Set `ANDROID_KEYSTORE_FILE`, `ANDROID_KEYSTORE_PASSWORD`,
   `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`, or add a gitignored
   `android/keystore.properties`. The release build refuses to run without them.
 - CI (`.github/workflows/ci.yml`) checks format, clippy, tests and the Android
-  build. Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml` and publishes
-  `jondo.apk`, `jondo-x86_64.AppImage` and `SHA256SUMS`.
+  build. Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml` and
+  publishes a package per processor, the `.dmg`, the Windows installer and
+  `SHA256SUMS`. Every artifact has a size budget, so a dependency that
+  quietly adds megabytes fails the release instead of reaching every machine.
 - Build with `JONDO_REPO=Jota-Music/jondo` so the release check points at this
   repository.
 - GitHub secrets for the Android release: `ANDROID_KEYSTORE_BASE64`,
