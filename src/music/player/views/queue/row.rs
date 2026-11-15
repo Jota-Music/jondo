@@ -33,11 +33,7 @@ pub(super) fn queue_action(
         theme::TEXT
     };
 
-    let bg = if danger {
-        theme::alpha(theme::rgb(0x450a0a), 0.5)
-    } else {
-        theme::ZINC_800
-    };
+    let bg = danger.then(|| theme::alpha(theme::rgb(0x450a0a), 0.5));
 
     hover::hover_in(
         Scope::Shell,
@@ -52,7 +48,9 @@ pub(super) fn queue_action(
                 .justify_center()
                 .rounded(theme::unit(6.0))
                 .when(enabled, |this| {
-                    this.bg(theme::mix(theme::white(0.0), bg, fade))
+                    this.when_some(bg, |this, bg| {
+                        this.bg(theme::mix(theme::white(0.0), bg, fade))
+                    })
                 })
                 .when(!enabled, |this| this.opacity(0.3))
                 .child(icons::icon(icon, 17.0, theme::mix(base, target, fade)))
@@ -235,11 +233,12 @@ pub(super) fn queue_row(
         }))
         .child(
             div()
+                .debug_selector(move || format!("queue-number-{index}"))
                 .w(theme::unit(if narrow { 20.0 } else { 24.0 }))
                 .mr(theme::unit(12.0))
                 .flex()
                 .justify_center()
-                .child(text::text(
+                .child(text::numeric(
                     (index + 1).to_string(),
                     if narrow { 11.0 } else { 12.0 },
                     theme::ZINC_600,

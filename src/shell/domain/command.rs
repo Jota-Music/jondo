@@ -38,4 +38,5 @@ pub enum Command {
     Locale(Locale),
     Browser(String),
     Interval(u64),
+    Mute,
 }

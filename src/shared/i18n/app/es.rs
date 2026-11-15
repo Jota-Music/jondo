@@ -417,6 +417,7 @@ pub(super) fn spanish(key: &str) -> &str {
         "Move below current" => "Mover debajo del actual",
         "Music" => "Música",
         "Mute" => "Silenciar",
+        "Unmute" => "Activar sonido",
         "Next" => "Siguiente",
         "No YouTube match" => "Sin coincidencia en YouTube",
         "No place to stage the backup" => "No hay dónde preparar la copia",

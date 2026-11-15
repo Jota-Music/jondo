@@ -33,6 +33,8 @@ pub struct Bar {
     enabled: bool,
     dragging: bool,
     flat: bool,
+    /// A fader instead of a bar: the fill grows from the bottom edge.
+    vertical: bool,
     on_change: Change,
 }
 
@@ -59,8 +61,16 @@ impl Bar {
             enabled,
             dragging,
             flat: false,
+            vertical: false,
             on_change: Rc::new(on_change),
         }
+    }
+
+    /// Stands the bar up: `width` is the length of the fader and `height` its
+    /// thickness, so a caller reads the same numbers either way.
+    pub fn vertical(mut self) -> Self {
+        self.vertical = true;
+        self
     }
 
     /// Drops the rounded ends so the bar reads as an edge-to-edge strip.
@@ -103,12 +113,16 @@ impl Element for Bar {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
-        let width = match self.width {
+        let length = match self.width {
             Some(width) => gpui::Length::Definite(theme::unit(width).into()),
             None => gpui::Length::Definite(relative(1.0)),
         };
-
-        let height = gpui::Length::Definite(theme::unit(self.height).into());
+        let thickness = gpui::Length::Definite(theme::unit(self.height).into());
+        let (width, height) = if self.vertical {
+            (thickness, length)
+        } else {
+            (length, thickness)
+        };
         let layout = window.request_layout(
             Style {
                 size: gpui::Size { width, height },
@@ -135,9 +149,16 @@ impl Element for Bar {
         // touch-sized around the silent track, not drawn, so the bar keeps its
         // hairline look and a miss near the thumb still starts the seek.
         let reach = self.height.max(self.thumb * 2.0).max(TOUCH);
-        let target = Bounds {
-            origin: point(bounds.left(), bounds.center().y - theme::unit(reach * 0.5)),
-            size: size(bounds.size.width, theme::unit(reach)),
+        let target = if self.vertical {
+            Bounds {
+                origin: point(bounds.center().x - theme::unit(reach * 0.5), bounds.top()),
+                size: size(theme::unit(reach), bounds.size.height),
+            }
+        } else {
+            Bounds {
+                origin: point(bounds.left(), bounds.center().y - theme::unit(reach * 0.5)),
+                size: size(bounds.size.width, theme::unit(reach)),
+            }
         };
 
         window.insert_hitbox(target, HitboxBehavior::Normal)
@@ -153,10 +174,17 @@ impl Element for Bar {
         window: &mut Window,
         _cx: &mut App,
     ) {
-        let top = (bounds.center().y - theme::unit(self.height * 0.5)).round();
-        let track = Bounds {
-            origin: point(bounds.left(), top),
-            size: size(bounds.size.width, theme::unit(self.height)),
+        let thickness = theme::unit(self.height);
+        let track = if self.vertical {
+            Bounds {
+                origin: point(bounds.center().x - thickness * 0.5, bounds.top()),
+                size: size(thickness, bounds.size.height),
+            }
+        } else {
+            Bounds {
+                origin: point(bounds.left(), (bounds.center().y - thickness * 0.5).round()),
+                size: size(bounds.size.width, thickness),
+            }
         };
 
         let radius = theme::unit(self.height * 0.5);
@@ -182,10 +210,18 @@ impl Element for Bar {
         ));
 
         let fill_width = track.size.width.as_f32() * self.fraction;
-        if fill_width > 0.0 {
-            let fill = Bounds {
-                origin: track.origin,
-                size: size(theme::unit(fill_width), track.size.height),
+        let fill_height = track.size.height.as_f32() * self.fraction;
+        if fill_width > 0.0 && fill_height > 0.0 {
+            let fill = if self.vertical {
+                Bounds {
+                    origin: point(track.left(), track.bottom() - theme::unit(fill_height)),
+                    size: size(track.size.width, theme::unit(fill_height)),
+                }
+            } else {
+                Bounds {
+                    origin: track.origin,
+                    size: size(theme::unit(fill_width), track.size.height),
+                }
             };
 
             window.paint_quad(quad(
@@ -198,7 +234,6 @@ impl Element for Bar {
             ));
         }
 
-        let thumb_center = track.left().as_f32() + fill_width;
         let dragging = self.dragging;
         let radius = if dragging {
             self.thumb * 1.1
@@ -206,11 +241,13 @@ impl Element for Bar {
             self.thumb
         };
 
+        let (thumb_x, thumb_y) = if self.vertical {
+            (track.center().x, track.bottom() - theme::unit(fill_height))
+        } else {
+            (track.left() + theme::unit(fill_width), track.center().y)
+        };
         let thumb = Bounds {
-            origin: point(
-                theme::unit(thumb_center) - theme::unit(radius),
-                track.center().y - theme::unit(radius),
-            ),
+            origin: point(thumb_x - theme::unit(radius), thumb_y - theme::unit(radius)),
             size: size(theme::unit(radius * 2.0), theme::unit(radius * 2.0)),
         };
 
@@ -223,10 +260,16 @@ impl Element for Bar {
             gpui::BorderStyle::Solid,
         ));
 
+        let vertical = self.vertical;
         let hitbox = hitbox.clone();
         let fraction = move |position: gpui::Point<Pixels>| {
-            ((position.x.as_f32() - bounds.left().as_f32()) / bounds.size.width.as_f32())
-                .clamp(0.0, 1.0)
+            if vertical {
+                (1.0 - (position.y.as_f32() - bounds.top().as_f32()) / bounds.size.height.as_f32())
+                    .clamp(0.0, 1.0)
+            } else {
+                ((position.x.as_f32() - bounds.left().as_f32()) / bounds.size.width.as_f32())
+                    .clamp(0.0, 1.0)
+            }
         };
 
         if !self.enabled {
@@ -234,10 +277,14 @@ impl Element for Bar {
         }
 
         let pointer = window.mouse_position();
-        let thumb_x = track.left() + theme::unit(fill_width);
+        let gap = if self.vertical {
+            (pointer.y - thumb_y).abs()
+        } else {
+            (pointer.x - thumb_x).abs()
+        };
         let cursor = if dragging {
             CursorStyle::ClosedHand
-        } else if hitbox.contains(&pointer) && (pointer.x - thumb_x).abs() <= theme::unit(10.0) {
+        } else if hitbox.contains(&pointer) && gap <= theme::unit(10.0) {
             CursorStyle::OpenHand
         } else {
             CursorStyle::PointingHand

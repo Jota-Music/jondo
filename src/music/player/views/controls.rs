@@ -1,5 +1,8 @@
 use gpui::prelude::FluentBuilder as _;
-use gpui::{Context, Div, IntoElement, ParentElement, Styled, div};
+use gpui::{
+    Context, Div, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
+    Styled, div,
+};
 
 use crate::music::track::views::actions;
 use crate::shared::ui::views::components::button;
@@ -62,7 +65,7 @@ pub(super) fn controls(
         )
     };
 
-    let shuffle = button::icon_button_in(
+    let shuffle = button::icon_flat_in(
         Scope::Shell,
         "ctrl-shuffle",
         icons::SHUFFLE,
@@ -79,7 +82,7 @@ pub(super) fn controls(
             app.notify_shell(cx);
         }),
     );
-    let repeat = button::icon_button_in(
+    let repeat = button::icon_flat_in(
         Scope::Shell,
         "ctrl-repeat",
         if repeat == crate::music::player::domain::queue::Repeat::One {
@@ -147,12 +150,14 @@ pub(super) fn controls(
         row = row.child(volume_control(app, cx, volume_width, false, Drag::Controls));
     }
 
-    if bar && viewport < 500.0 {
+    if bar {
+        // The sheet's row is the only volume the phone has while it is open:
+        // the compact bar under it keeps the icon alone.
         row = row.child(volume_inline(app, cx, Drag::Controls));
     }
 
     row = row
-        .child(button::icon_button_in(
+        .child(button::icon_flat_in(
             Scope::Shell,
             "ctrl-queue",
             icons::LIST_MUSIC,
@@ -181,7 +186,7 @@ pub(super) fn controls(
             ))
         })
         .when(minimize, |row| {
-            row.child(button::icon_button_in(
+            row.child(button::icon_flat_in(
                 Scope::Shell,
                 "ctrl-minimize",
                 icons::MINIMIZE_2,
@@ -299,7 +304,11 @@ pub(super) fn volume_inline(
         )
 }
 
-fn volume_button(app: &mut Jondo, cx: &mut Context<Jondo>, size: f32) -> impl IntoElement {
+pub(super) fn volume_button(
+    app: &mut Jondo,
+    cx: &mut Context<Jondo>,
+    size: f32,
+) -> impl IntoElement {
     let (muted, volume) = {
         let player = app.player.read(cx);
         (player.muted, player.volume)
@@ -337,7 +346,6 @@ fn volume_bar(
 ) -> impl IntoElement {
     let value = app.player.read(cx).volume;
     let dragging = app.ui.drag == Some(kind);
-    let entity = cx.entity();
     Bar::new(
         value,
         width,
@@ -347,16 +355,92 @@ fn volume_bar(
         6.0,
         true,
         dragging,
-        move |value, commit, _, cx| {
-            entity.update(cx, |app, cx| {
-                app.ui.drag = if commit { None } else { Some(kind) };
-                app.set_volume(value, cx);
-                if commit {
-                    app.persist(cx);
-                }
-
-                app.notify_shell(cx);
-            });
-        },
+        volume_change(cx, kind),
     )
+}
+
+fn volume_change(
+    cx: &mut Context<Jondo>,
+    kind: Drag,
+) -> impl Fn(f32, bool, &mut gpui::Window, &mut gpui::App) + 'static {
+    let entity = cx.entity();
+    move |value, commit, _, cx| {
+        entity.update(cx, |app, cx| {
+            app.ui.drag = if commit { None } else { Some(kind) };
+            app.set_volume(value, cx);
+            if commit {
+                app.persist(cx);
+            }
+
+            app.notify_shell(cx);
+        });
+    }
+}
+
+/// The compact bar's speaker. A mouse gets the fader hanging over the icon; a
+/// finger has no hover and the bar has no room for the bar inline, so the icon
+/// alone stays and its click mutes. The panel and the icon report their hover
+/// apart so a pointer crossing from one into the other never closes it.
+pub(super) fn volume_tip(app: &mut Jondo, cx: &mut Context<Jondo>) -> impl IntoElement {
+    let value = app.player.read(cx).volume;
+    let dragging = app.ui.drag == Some(Drag::Volume);
+    let accent = app.accent;
+    let open = app.ui.volume_icon || app.ui.volume_tip;
+
+    div()
+        .relative()
+        .flex_none()
+        .debug_selector(|| "bar-volume".to_owned())
+        .child(
+            div()
+                .id("volume-hover")
+                .on_hover(cx.listener(|app, on: &bool, _, cx| {
+                    app.ui.volume_icon = *on;
+                    cx.notify();
+                }))
+                .child(volume_button(app, cx, 22.0)),
+        )
+        .when(open, |this| {
+            this.child(
+                div()
+                    .id("volume-tip")
+                    .absolute()
+                    .bottom(theme::unit(22.0))
+                    .left(theme::unit(-9.0))
+                    .w(theme::unit(40.0))
+                    .p(theme::unit(8.0))
+                    .flex()
+                    .justify_center()
+                    .rounded(theme::unit(8.0))
+                    .border_1()
+                    .border_color(theme::BORDER)
+                    .bg(theme::SURFACE)
+                    .shadow(vec![
+                        gpui::BoxShadow::new(
+                            theme::unit(0.0),
+                            theme::unit(4.0),
+                            theme::alpha(theme::rgb(0x000000), 0.5).into(),
+                        )
+                        .blur_radius(theme::unit(12.0)),
+                    ])
+                    .on_hover(cx.listener(|app, on: &bool, _, cx| {
+                        app.ui.volume_tip = *on;
+                        cx.notify();
+                    }))
+                    .child(
+                        Bar::new(
+                            value,
+                            Some(96.0),
+                            6.0,
+                            accent,
+                            progress::TRACK,
+                            5.0,
+                            true,
+                            dragging,
+                            volume_change(cx, Drag::Volume),
+                        )
+                        .vertical(),
+                    ),
+            )
+        })
 }

@@ -62,6 +62,10 @@ pub struct UiState {
     pub pressed_song: Option<(usize, gpui::Point<gpui::Pixels>)>,
     pub pressed_queue: Option<(usize, gpui::Point<gpui::Pixels>)>,
     pub sort_mode: bool,
+    /// The compact bar's volume tip. The icon and its panel report hover
+    /// apart, so a pointer crossing from one into the other never closes it.
+    pub volume_icon: bool,
+    pub volume_tip: bool,
     pub following_filter: Filter,
     pub following_grid: bool,
     pub user_grid: bool,
@@ -135,6 +139,8 @@ impl Default for UiState {
             pressed_song: None,
             pressed_queue: None,
             sort_mode: false,
+            volume_icon: false,
+            volume_tip: false,
             following_filter: Filter::All,
             following_grid: true,
             user_grid: true,

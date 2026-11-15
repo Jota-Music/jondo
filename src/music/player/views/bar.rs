@@ -14,22 +14,30 @@ use crate::shared::ui::views::design::theme;
 use crate::shell::app::{Drag, Jondo};
 use crate::shell::views::menu::{Command, Item, Menu, toggle};
 
-use super::controls::{seek_bar, volume_control};
+use super::controls::{seek_bar, volume_control, volume_tip};
 
 pub fn bar(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> AnyElement {
     let narrow = window.viewport_size().width < theme::unit(768.0);
     let viewport = window.viewport_size().width.as_f32();
     let gap = if narrow { 6.0 } else { 12.0 };
-    let volume_width = if viewport >= 768.0 {
-        144.0
-    } else if viewport >= 500.0 {
-        104.0
-    } else {
-        0.0
-    };
+    let volume_width = if viewport >= 768.0 { 144.0 } else { 0.0 };
 
     let song = app.player.read(cx).current().cloned();
     let has_song = song.is_some();
+    // The bar carries the speaker while it has room for it. Below that the
+    // menu is the only place left to mute the app.
+    let mute = (volume_width == 0.0).then(|| {
+        let muted = app.player.read(cx).muted;
+        Item::new(
+            if muted {
+                icons::VOLUME_X
+            } else {
+                icons::VOLUME_2
+            },
+            if muted { t("Unmute") } else { t("Mute") },
+            Command::Mute,
+        )
+    });
     let player_menu = song
         .as_ref()
         .map(|song| {
@@ -42,7 +50,7 @@ pub fn bar(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> Any
                 None,
                 None,
                 None,
-                Vec::new(),
+                mute.into_iter().collect(),
             )
         })
         .unwrap_or_default();
@@ -58,6 +66,7 @@ pub fn bar(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> Any
         app,
         cx,
         narrow,
+        viewport < 420.0,
         gap,
         volume_width,
         fill,
@@ -65,7 +74,7 @@ pub fn bar(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> Any
         has_song,
         player_menu.clone(),
     );
-    let left = leading(app, cx, song);
+    let left = leading(app, cx, song, viewport < 420.0);
     let hold_menu = player_menu.clone();
     let entity = cx.entity();
     // Same box as the web bar: the seek line in flow, then a 12px padded row
@@ -110,7 +119,8 @@ pub fn bar(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> Any
             div()
                 .w_full()
                 .py(theme::unit(12.0))
-                .px(theme::unit(16.0))
+                // Jota tightens the row on the narrowest phones.
+                .px(theme::unit(if viewport < 420.0 { 8.0 } else { 16.0 }))
                 .flex()
                 .items_center()
                 .gap(theme::unit(gap))
@@ -125,6 +135,7 @@ fn controls(
     app: &mut Jondo,
     cx: &mut Context<Jondo>,
     narrow: bool,
+    tiny: bool,
     gap: f32,
     volume_width: f32,
     fill: gpui::Rgba,
@@ -188,6 +199,11 @@ fn controls(
         transport = transport
             .child(volume_control(app, cx, volume_width, false, Drag::Volume))
             .child(div().w(theme::unit(8.0)));
+    } else if !tiny && !cfg!(target_os = "android") {
+        // The phone bar keeps the speaker, not the slider: hovering it hangs
+        // the fader over the row. The tightest phones and Android have no room
+        // for it and mute from the track menu.
+        transport = transport.child(volume_tip(app, cx));
     }
 
     transport = transport
@@ -323,6 +339,7 @@ fn leading(
     app: &mut Jondo,
     cx: &mut Context<Jondo>,
     song: Option<crate::shared::music::domain::Song>,
+    tiny: bool,
 ) -> AnyElement {
     let empty = song.is_none();
     let left =
@@ -332,7 +349,7 @@ fn leading(
             .min_w(theme::unit(0.0))
             .flex()
             .items_center()
-            .gap(theme::unit(12.0))
+            .gap(theme::unit(if tiny { 8.0 } else { 12.0 }))
             .cursor_pointer()
             .on_click(cx.listener(|app, _: &gpui::ClickEvent, window, cx| {
                 if window.viewport_size().width < theme::unit(768.0) {
@@ -355,8 +372,8 @@ fn leading(
                         .child(cover::art(
                             &mut app.covers,
                             song.cover.as_deref().unwrap_or_default(),
-                            48.0,
-                            48.0,
+                            if tiny { 40.0 } else { 48.0 },
+                            if tiny { 40.0 } else { 48.0 },
                             6.0,
                         ))
                         .child(

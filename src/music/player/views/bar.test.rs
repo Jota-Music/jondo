@@ -80,6 +80,18 @@ fn the_phone_bar_keeps_finger_sized_controls(cx: &mut TestAppContext) {
         width(cx, "bar-title") > theme::unit(40.0),
         "the two extras must not leave the song title unreadable"
     );
+    assert!(
+        cx.debug_bounds("bar-volume").is_none(),
+        "the tightest phones hand the volume to the track menu"
+    );
+
+    cx.simulate_resize(gpui::size(px(500.0), px(800.0)));
+    cx.run_until_parked();
+    frame(cx);
+    assert!(
+        cx.debug_bounds("bar-volume").is_some(),
+        "a phone with room keeps the speaker for its hover fader"
+    );
 
     let expand = cx.debug_bounds("bar-expand").unwrap().center();
     for expected in [true, false] {

@@ -76,5 +76,9 @@ pub(super) fn execute(
         Command::Locale(locale) => app.set_locale(locale, cx),
         Command::Browser(browser) => app.ui.browser_pick = browser,
         Command::Interval(minutes) => app.set_sync_interval(minutes, cx),
+        Command::Mute => {
+            app.toggle_mute(cx);
+            app.notify_shell(cx);
+        }
     }
 }

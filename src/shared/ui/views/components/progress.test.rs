@@ -107,6 +107,75 @@ fn a_press_does_not_reach_the_bar_through_a_cover(cx: &mut TestAppContext) {
     assert_eq!(changes.get(), 0, "a tap under a cover must not seek");
 }
 
+struct Fader {
+    last: Rc<Cell<f32>>,
+}
+
+impl Render for Fader {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        let last = self.last.clone();
+        div().size_full().child(
+            div()
+                .debug_selector(|| "fader".to_owned())
+                .w(px(8.0))
+                .h(px(200.0))
+                .child(
+                    Bar::new(
+                        0.5,
+                        Some(200.0),
+                        8.0,
+                        theme::TEXT,
+                        TRACK,
+                        4.0,
+                        true,
+                        false,
+                        move |value, _, _, _| last.set(value),
+                    )
+                    .vertical(),
+                ),
+        )
+    }
+}
+
+/// A fader reads its value off the vertical axis and fills from the bottom, so
+/// the two ends cannot quietly swap: a press at the top is the far end.
+#[gpui::test]
+fn a_fader_reads_the_vertical_axis_from_the_bottom(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        theme::install(cx);
+    });
+
+    let last = Rc::new(Cell::new(-1.0));
+    let value = last.clone();
+    let (_view, cx) = cx.add_window_view(move |_, _| Fader { last: value });
+    cx.run_until_parked();
+
+    let bounds = cx.debug_bounds("fader").expect("the fader paints");
+    let press = |cx: &mut VisualTestContext, at: gpui::Point<gpui::Pixels>| {
+        cx.simulate_mouse_down(at, MouseButton::Left, Modifiers::default());
+        cx.simulate_mouse_up(at, MouseButton::Left, Modifiers::default());
+        cx.run_until_parked();
+    };
+
+    press(cx, gpui::point(bounds.center().x, bounds.top() + px(4.0)));
+    assert!(
+        last.get() > 0.9,
+        "the top edge is the far end of the fader, not {}",
+        last.get()
+    );
+
+    press(
+        cx,
+        gpui::point(bounds.center().x, bounds.bottom() - px(4.0)),
+    );
+    assert!(
+        last.get() < 0.1,
+        "the bottom edge is silence, not {}",
+        last.get()
+    );
+}
+
 #[gpui::test]
 fn a_finger_below_the_line_still_grabs_the_bar(cx: &mut TestAppContext) {
     let (changes, cx) = probe(cx, false);
