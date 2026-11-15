@@ -16,21 +16,24 @@ pub fn spinner() -> Div {
         .child(button::spinner(24.0, theme::MUTED))
 }
 
-/// Jota's `Rows`: the framed list shell with the spinner already inside it,
-/// so the frame does not pop in once the rows land.
+/// Jota's `Rows`: the framed list shell with the spinner already inside it, so
+/// the frame does not pop in once the rows land. It carries the same ring and
+/// no fill as every other panel, and a phone keeps only its top hairline.
 pub fn rows() -> AnyElement {
+    let shell = div().size_full().child(spinner());
+    let shell = if super::narrow() {
+        shell.border_t_1().border_color(theme::BORDER)
+    } else {
+        shell
+            .rounded(theme::unit(8.0))
+            .border_1()
+            .border_color(theme::BORDER)
+    };
+
     div()
         .relative()
         .flex_1()
         .min_h(theme::unit(0.0))
-        .child(
-            div()
-                .size_full()
-                .rounded(theme::unit(8.0))
-                .border_1()
-                .border_color(theme::BORDER)
-                .bg(theme::SURFACE)
-                .child(spinner()),
-        )
+        .child(shell)
         .into_any_element()
 }

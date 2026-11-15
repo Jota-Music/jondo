@@ -8,7 +8,7 @@ use crate::shared::i18n::t;
 use crate::shared::music::domain::Source;
 use crate::shared::music::views::cover::brand_mono;
 use crate::shared::ui::views::components::paint::{self, Scope as PaintScope};
-use crate::shared::ui::views::components::{grid as layout, hover, text};
+use crate::shared::ui::views::components::{grid as layout, hover};
 use crate::shared::ui::views::design::icons;
 use crate::shared::ui::views::design::theme;
 use crate::shell::app::{Filter, Jondo};
@@ -29,16 +29,22 @@ pub(super) fn controls(
         .rounded(theme::unit(6.0))
         .border_1()
         .border_color(theme::BORDER)
-        .child(segment_text(
-            "filter-all",
-            t("All"),
-            filter == Filter::All,
-            height,
-            cx.listener(move |app, _: &gpui::ClickEvent, _, cx| {
-                set_filter(app, scope, Filter::All);
-                cx.notify();
-            }),
-        ))
+        .bg(theme::SURFACE)
+        .child(
+            segment(
+                "filter-all",
+                icons::Icon::Asterisk,
+                if narrow { 20.0 } else { 16.0 },
+                filter == Filter::All,
+                false,
+                height,
+                cx.listener(move |app, _: &gpui::ClickEvent, _, cx| {
+                    set_filter(app, scope, Filter::All);
+                    cx.notify();
+                }),
+            )
+            .aria_label(t("All")),
+        )
         .child(segment(
             "filter-youtube",
             icons::Icon::YouTube,
@@ -83,8 +89,10 @@ pub(super) fn controls(
         .flex()
         .items_center()
         .justify_between()
-        .px(theme::unit(4.0))
-        .pt(theme::unit(4.0))
+        // On a phone the bar takes the same 12 the page heads carry, so the
+        // filters line up with the title instead of running wider than it.
+        .px(theme::unit(if narrow { 12.0 } else { 4.0 }))
+        .pt(theme::unit(if narrow { 8.0 } else { 4.0 }))
         .pb(theme::unit(8.0))
         .child(
             div()
@@ -93,32 +101,30 @@ pub(super) fn controls(
                 .gap(theme::unit(8.0))
                 .child(sources)
                 .when(scope == Scope::Library && filter == Filter::Local, |row| {
-                    row.child(
-                        div()
-                            .id("new-playlist")
-                            .debug_selector(|| "new-playlist".to_owned())
-                            .w(theme::unit(height))
-                            .h(theme::unit(height))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .rounded(theme::unit(6.0))
-                            .border_1()
-                            .border_color(theme::BORDER)
-                            .bg(theme::SURFACE)
-                            .cursor_pointer()
-                            .hover(|style| style.bg(theme::ZINC_900))
-                            .on_click(cx.listener(|app, _: &gpui::ClickEvent, window, cx| {
-                                app.ui.create_open = true;
-                                app.set_field("create", "", window, cx);
-                                cx.notify();
-                            }))
-                            .child(icons::icon(
-                                icons::PLUS,
-                                if narrow { 20.0 } else { 16.0 },
-                                theme::MUTED,
-                            )),
-                    )
+                    row.child(hover::hover_in(
+                        PaintScope::Page,
+                        "new-playlist",
+                        true,
+                        move |fade| {
+                            div()
+                                .w(theme::unit(height))
+                                .h(theme::unit(height))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .rounded(theme::unit(6.0))
+                                .child(icons::icon(
+                                    icons::PLUS,
+                                    18.0,
+                                    theme::mix(theme::MUTED, theme::TEXT, fade),
+                                ))
+                        },
+                        cx.listener(|app, _: &gpui::ClickEvent, window, cx| {
+                            app.ui.create_open = true;
+                            app.set_field("create", "", window, cx);
+                            cx.notify();
+                        }),
+                    ))
                 }),
         )
         .child(layout::toggle(
@@ -133,48 +139,6 @@ pub(super) fn controls(
                 set_grid(app, scope, false);
                 cx.notify();
             }),
-        ))
-}
-
-pub(super) fn segment_text(
-    id: &'static str,
-    label: &'static str,
-    active: bool,
-    height: f32,
-    on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
-) -> Stateful<Div> {
-    let element = id.into();
-    let fade = hover::value(&element, std::time::Instant::now());
-    div()
-        .id(element.clone())
-        .debug_selector(move || id.to_owned())
-        .h(theme::unit(height))
-        .px(theme::unit(12.0))
-        .flex()
-        .items_center()
-        .justify_center()
-        .when(active, |this| this.bg(theme::ZINC_800))
-        .cursor_pointer()
-        .on_hover(move |on: &bool, window, cx| {
-            hover::set_in(
-                PaintScope::Page,
-                &element,
-                *on,
-                std::time::Instant::now(),
-                window.last_input_was_touch(),
-            );
-            paint::paint(PaintScope::Page, cx);
-        })
-        .on_click(on_click)
-        .child(text::weighted(
-            label,
-            12.0,
-            if active {
-                theme::rgb(0xffffff)
-            } else {
-                theme::mix(theme::FAINT, theme::rgb(0xffffff), fade)
-            },
-            theme::Weight::Medium,
         ))
 }
 

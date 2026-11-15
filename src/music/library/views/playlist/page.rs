@@ -132,9 +132,9 @@ pub fn results(
             .collect()
     })
     .track_scroll(&scroll)
-    .pl(theme::unit(grid::LEFT))
-    .pr(theme::unit(grid::GUTTER))
-    .pb(theme::unit(12.0))
+    .pl(theme::unit(grid::left()))
+    .pr(theme::unit(grid::gutter()))
+    .pb(theme::unit(if grid::narrow(window) { 16.0 } else { 12.0 }))
     .h_full();
 
     div()
@@ -180,9 +180,12 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> An
         .clone()
         .filter(|owner| !owner.is_empty())
         .and_then(|owner| {
+            let owner_id = playlist.owner_id.clone();
             let route = match playlist.source {
-                Source::Spotify => Route::User(owner.clone()),
-                Source::YouTube => Route::Channel(playlist.owner_id.clone()?),
+                Source::Spotify => Route::User(crate::shared::music::domain::id::user(&owner)),
+                Source::YouTube => {
+                    Route::Channel(crate::shared::music::domain::id::channel(&owner_id?))
+                }
                 Source::Local => return None,
             };
 

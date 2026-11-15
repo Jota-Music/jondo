@@ -44,6 +44,7 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> An
     }
 
     let listable = matches!(app.search.tab.as_str(), "playlists" | "channels");
+    let narrow = window.viewport_size().width < theme::unit(768.0);
     let mut controls = div()
         .relative()
         .w_full()
@@ -51,8 +52,10 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> An
         .items_center()
         .justify_between()
         .gap(theme::unit(8.0))
-        .px(theme::unit(4.0))
-        .pt(theme::unit(4.0))
+        // The shelf bar of the same page carries 12 on a phone, so the search
+        // controls match it instead of running wider than the title.
+        .px(theme::unit(if narrow { 12.0 } else { 4.0 }))
+        .pt(theme::unit(if narrow { 8.0 } else { 4.0 }))
         .pb(theme::unit(8.0));
     if !tabs.is_empty() {
         let mut bar = div()
@@ -97,7 +100,7 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> An
             .flex()
             .items_center()
             .justify_center()
-            .px(theme::unit(120.0))
+            .px(theme::unit(112.0))
             .child(text::truncated(
                 query,
                 16.0,
@@ -131,11 +134,17 @@ fn tab(app: &mut Jondo, cx: &mut Context<Jondo>, id: &str, icon: icons::Icon) ->
     let active = app.search.tab == id;
     let element = gpui::ElementId::Name(format!("search-tab-{id}").into());
     let fade = hover::value(&element, std::time::Instant::now());
+    // A finger gets the same 40 the channel switcher and the shelf filters use.
+    let side = if crate::shared::ui::views::components::narrow() {
+        40.0
+    } else {
+        32.0
+    };
     let id = id.to_owned();
     div()
         .id(element.clone())
-        .w(theme::unit(32.0))
-        .h(theme::unit(32.0))
+        .w(theme::unit(side))
+        .h(theme::unit(side))
         .flex()
         .items_center()
         .justify_center()

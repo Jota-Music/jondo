@@ -1,53 +1,56 @@
-use gpui::{
-    AnyElement, Context, InteractiveElement, IntoElement, ParentElement,
-    StatefulInteractiveElement, Styled, Window, div,
-};
+use gpui::prelude::FluentBuilder as _;
+use gpui::{AnyElement, Context, IntoElement, ParentElement, Styled, Window, div};
 
 use crate::music::library::views::playlist;
 use crate::shared::i18n::t;
 use crate::shared::music::domain::{Follow, FollowKind};
 use crate::shared::music::views::cover;
-use crate::shared::ui::views::components::{grid, hint};
+use crate::shared::ui::views::components::paint::Scope;
+use crate::shared::ui::views::components::{grid, hint, hover};
 use crate::shared::ui::views::design::icons;
 use crate::shared::ui::views::design::theme;
 use crate::shell::app::{Jondo, Route};
 use crate::shell::views::page;
 
+/// The toolbar buttons: a finger needs the larger target the phone gives them.
+fn side() -> (f32, f32) {
+    if crate::shared::ui::views::components::narrow() {
+        (40.0, 18.0)
+    } else {
+        (32.0, 18.0)
+    }
+}
+
 /// The profile before its data lands: the avatar and the name lines shimmer in
 /// the header, and the grid keeps the cards' frame.
 fn skeleton(app: &mut Jondo, window: &Window, username: &str) -> AnyElement {
+    let (side, glyph) = side();
     let header = page::pending(64.0, 32.0)
         .child(
             div()
-                .w(theme::unit(32.0))
-                .h(theme::unit(32.0))
+                .w(theme::unit(side))
+                .h(theme::unit(side))
                 .flex_none()
                 .flex()
                 .items_center()
                 .justify_center()
                 .rounded(theme::unit(6.0))
-                .border_1()
-                .border_color(theme::ZINC_800)
-                .bg(theme::SURFACE)
                 .child(cover::brand_mono(
                     crate::shared::music::domain::Source::YouTube,
-                    16.0,
+                    glyph,
                     theme::MUTED,
                 )),
         )
         .child(
             div()
-                .w(theme::unit(32.0))
-                .h(theme::unit(32.0))
+                .w(theme::unit(side))
+                .h(theme::unit(side))
                 .flex_none()
                 .flex()
                 .items_center()
                 .justify_center()
                 .rounded(theme::unit(6.0))
-                .border_1()
-                .border_color(theme::ZINC_800)
-                .bg(theme::SURFACE)
-                .child(icons::icon(icons::HEART, 14.0, theme::ZINC_700)),
+                .child(icons::icon(icons::HEART, glyph, theme::ZINC_700)),
         );
     let cell = grid::cell(window);
     let art = cell - 12.0;
@@ -108,32 +111,35 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> An
     let playlists = app.user_playlists(&username, cx);
     let grid = app.ui.user_grid;
     let follow = Follow::spotify(FollowKind::User, &username, &user_name, user_image.clone());
-    let extra = div()
-        .id("user-youtube")
-        .w(theme::unit(32.0))
-        .h(theme::unit(32.0))
-        .flex()
-        .items_center()
-        .justify_center()
-        .rounded(theme::unit(6.0))
-        .border_1()
-        .border_color(theme::ZINC_800)
-        .bg(theme::SURFACE)
-        .cursor_pointer()
-        .on_click(cx.listener({
+    let (side, glyph) = side();
+    let extra = hover::hover_in(
+        Scope::Page,
+        "user-youtube",
+        true,
+        move |fade| {
+            div()
+                .w(theme::unit(side))
+                .h(theme::unit(side))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(theme::unit(6.0))
+                .child(cover::brand_mono(
+                    crate::shared::music::domain::Source::YouTube,
+                    glyph,
+                    theme::mix(theme::MUTED, theme::TEXT, fade),
+                ))
+        },
+        cx.listener({
             let name = user_name.clone();
             move |app, _: &gpui::ClickEvent, window, cx| {
                 app.set_field("search", &name, window, cx);
                 app.search(name.clone(), cx);
                 cx.notify();
             }
-        }))
-        .child(cover::brand_mono(
-            crate::shared::music::domain::Source::YouTube,
-            16.0,
-            theme::MUTED,
-        ))
-        .into_any_element();
+        }),
+    )
+    .into_any_element();
     let header = page::show(
         app,
         cx,
@@ -157,10 +163,13 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> An
         .flex()
         .items_center()
         .justify_end()
+        .when(crate::shared::ui::views::components::narrow(), |row| {
+            row.px(theme::unit(12.0))
+        })
         .child(grid::toggle(
             "user-view",
             grid,
-            32.0,
+            side,
             cx.listener(|app, _: &gpui::ClickEvent, _, cx| {
                 app.ui.user_grid = true;
                 cx.notify();

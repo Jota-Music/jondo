@@ -1,5 +1,6 @@
 use std::rc::Rc;
 
+use gpui::prelude::FluentBuilder as _;
 use gpui::{
     Context, InteractiveElement, IntoElement, ParentElement, Styled, Window, div, uniform_list,
 };
@@ -111,10 +112,21 @@ fn render(
         .size_full()
         .flex()
         .flex_col()
-        .rounded(theme::unit(6.0))
-        .bg(theme::SURFACE)
-        .border_1()
-        .border_color(theme::BORDER)
+        // A phone has no room for a box around the shelf: it gives way to a
+        // hairline on top. Either way the fill stays out, so the backdrop
+        // reaches the rows.
+        .when(narrow, |panel| {
+            panel
+                .overflow_hidden()
+                .border_t_1()
+                .border_color(theme::BORDER)
+        })
+        .when(!narrow, |panel| {
+            panel
+                .rounded(theme::unit(6.0))
+                .border_1()
+                .border_color(theme::BORDER)
+        })
         .child(controls(app, cx, narrow, scope));
 
     if items.is_empty() {
@@ -193,9 +205,9 @@ fn render(
             .collect()
     })
     .track_scroll(&scroll)
-    .pl(theme::unit(grid::LEFT))
-    .pr(theme::unit(grid::GUTTER))
-    .pb(theme::unit(12.0))
+    .pl(theme::unit(grid::left()))
+    .pr(theme::unit(grid::gutter()))
+    .pb(theme::unit(if grid::narrow(window) { 16.0 } else { 12.0 }))
     .h_full();
 
     panel.child(

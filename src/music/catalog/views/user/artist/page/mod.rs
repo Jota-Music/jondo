@@ -65,7 +65,8 @@ fn label(group: &str) -> &str {
 /// top-tracks tab and the first discography tab share the opening row.
 fn tab_widths(width: f32) -> (f32, f32, f32, bool) {
     let padded = width < 768.0;
-    let column = (width - if padded { 32.0 } else { 0.0 }).min(theme::CONTENT_WIDTH);
+    // The row carries Jota's `px-3`, so the tabs span what is left of it.
+    let column = (width - if padded { 24.0 } else { 0.0 }).min(theme::CONTENT_WIDTH);
     let gap = 8.0;
     let stacked = width < 640.0;
     let cell = ((column - gap * 5.0) / 6.0).floor();
@@ -134,7 +135,14 @@ fn tabs(
     }
 
     let per_row = if stacked { 2 } else { 3 };
-    let mut layout = div().flex().flex_col().gap(theme::unit(gap)).child(head);
+    let mut layout = div()
+        .flex()
+        .flex_col()
+        .gap(theme::unit(gap))
+        .when(window.viewport_size().width < theme::unit(768.0), |tabs| {
+            tabs.px(theme::unit(12.0))
+        })
+        .child(head);
     while !rest.is_empty() {
         let take = per_row.min(rest.len());
         let mut row = div().flex().gap(theme::unit(gap));
@@ -154,19 +162,21 @@ fn tabs(
 fn skeleton(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>, id: &str) -> AnyElement {
     let groups = groups_of(&[]);
     let selected = selected(app, &groups);
+    let side = if crate::shared::ui::views::components::narrow() {
+        40.0
+    } else {
+        32.0
+    };
     let header = page::pending(64.0, 6.0).child(
         div()
-            .w(theme::unit(32.0))
-            .h(theme::unit(32.0))
+            .w(theme::unit(side))
+            .h(theme::unit(side))
             .flex_none()
             .flex()
             .items_center()
             .justify_center()
             .rounded(theme::unit(6.0))
-            .border_1()
-            .border_color(theme::ZINC_800)
-            .bg(theme::SURFACE)
-            .child(icons::icon(icons::HEART, 14.0, theme::ZINC_700)),
+            .child(icons::icon(icons::HEART, 18.0, theme::ZINC_700)),
     );
     let tabs = tabs(app, cx, window, id, &[], &groups, &selected);
     let content = if selected == "tracks" {
@@ -266,15 +276,18 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> An
                 let summary = menu_summary.clone();
                 Box::new(move |app: &Jondo, cx: &gpui::App| {
                     let followed = app.following().iter().any(|item| item.id == summary.id);
-                    let lead = vec![Item::new(
-                        if followed {
-                            icons::HEART_FILL
-                        } else {
-                            icons::HEART
-                        },
-                        if followed { t("Unfollow") } else { t("Follow") },
-                        Command::Follow(summary.clone()),
-                    )];
+                    let lead = vec![
+                        Item::new(
+                            if followed {
+                                icons::HEART_FILL
+                            } else {
+                                icons::HEART
+                            },
+                            if followed { t("Unfollow") } else { t("Follow") },
+                            Command::Follow(summary.clone()),
+                        )
+                        .on(followed),
+                    ];
                     actions::page(app, cx, (*tracks).clone(), "artist", &id, lead)
                 }) as Box<dyn Fn(&Jondo, &gpui::App) -> Vec<Item>>
             }),
@@ -392,9 +405,9 @@ fn content(
             .collect()
     })
     .track_scroll(&scroll)
-    .pl(theme::unit(grid::LEFT))
-    .pr(theme::unit(grid::GUTTER))
-    .pb(theme::unit(12.0))
+    .pl(theme::unit(grid::left()))
+    .pr(theme::unit(grid::gutter()))
+    .pb(theme::unit(if grid::narrow(window) { 16.0 } else { 12.0 }))
     .h_full();
 
     let body = div()

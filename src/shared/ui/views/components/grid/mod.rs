@@ -10,6 +10,25 @@ use crate::shared::ui::views::design::{icons, theme};
 /// The inner left inset and the scrollbar gutter every framed pane keeps.
 pub const LEFT: f32 = 4.0;
 pub const GUTTER: f32 = 15.0;
+
+/// The phone keeps Jota's `pl-2 pr-4`: the cards hang closer to the page edge
+/// than the heads do, and the gutter carves no border because the box is gone.
+pub fn left() -> f32 {
+    if super::narrow() { 8.0 } else { LEFT }
+}
+
+fn left_for(width: f32) -> f32 {
+    if width < 768.0 { 8.0 } else { LEFT }
+}
+
+pub fn gutter() -> f32 {
+    if super::narrow() { 16.0 } else { GUTTER }
+}
+
+fn gutter_for(width: f32) -> f32 {
+    if width < 768.0 { 16.0 } else { GUTTER }
+}
+
 const BORDER: f32 = 2.0;
 
 pub fn narrow(window: &Window) -> bool {
@@ -35,8 +54,12 @@ pub fn cell_in(window: &Window, columns: f32, column_gap: f32) -> f32 {
 }
 
 fn cell_for(width: f32, columns: f32, column_gap: f32) -> f32 {
-    let column = (width - if width < 768.0 { 32.0 } else { 0.0 }).min(theme::CONTENT_WIDTH);
-    ((column - LEFT - GUTTER - BORDER - column_gap * (columns - 1.0)) / columns)
+    let narrow = width < 768.0;
+    // The pane's own insets are subtracted below, so the column is the page.
+    let column = width.min(theme::CONTENT_WIDTH);
+    let border = if narrow { 0.0 } else { BORDER };
+    ((column - left_for(width) - gutter_for(width) - border - column_gap * (columns - 1.0))
+        / columns)
         .floor()
         .max(96.0)
 }
@@ -88,6 +111,7 @@ pub fn toggle(
         .rounded(theme::unit(6.0))
         .border_1()
         .border_color(theme::BORDER)
+        .bg(theme::SURFACE)
         .child(option(
             format!("{id}-grid"),
             icons::LAYOUT_GRID,
@@ -167,9 +191,9 @@ fn pane(id: &'static str, scroll: &ScrollHandle, body: AnyElement) -> AnyElement
                 .size_full()
                 .overflow_y_scroll()
                 .track_scroll(scroll)
-                .pl(theme::unit(LEFT))
-                .pr(theme::unit(GUTTER))
-                .pb(theme::unit(12.0))
+                .pl(theme::unit(left()))
+                .pr(theme::unit(gutter()))
+                .pb(theme::unit(if super::narrow() { 16.0 } else { 12.0 }))
                 .child(body),
         )
         .child(scroll::bar(scroll))

@@ -4,8 +4,8 @@ use gpui::{
     div,
 };
 
-use crate::shared::ui::views::components::hover;
 use crate::shared::ui::views::components::paint::{self, Scope};
+use crate::shared::ui::views::components::{hover, narrow};
 use crate::shared::ui::views::design::icons;
 use crate::shared::ui::views::design::theme;
 use crate::shell::app::Jondo;
@@ -19,10 +19,12 @@ pub(super) fn tab_button(
 ) -> impl IntoElement {
     let element = id.into();
     let fade = hover::value(&element, std::time::Instant::now());
+    // A finger needs the larger target the phone gives every toolbar button.
+    let side = if narrow() { 40.0 } else { 32.0 };
     div()
         .id(element.clone())
-        .w(theme::unit(32.0))
-        .h(theme::unit(32.0))
+        .w(theme::unit(side))
+        .h(theme::unit(side))
         .flex()
         .items_center()
         .justify_center()
@@ -45,7 +47,7 @@ pub(super) fn tab_button(
         }))
         .child(icons::icon(
             icon,
-            16.0,
+            side / 2.0,
             if active {
                 theme::rgb(0xffffff)
             } else {

@@ -45,6 +45,7 @@ pub fn show(
         clear,
         reload,
     } = toolbar;
+    let narrow = window.viewport_size().width < theme::unit(768.0);
     let state = app.field(key, &query, placeholder, window, cx);
     let open = app
         .menu
@@ -54,6 +55,8 @@ pub fn show(
         .flex()
         .items_center()
         .gap(theme::unit(8.0))
+        // The head above carries the 12 on a phone; the row matches it.
+        .when(narrow, |row| row.px(theme::unit(12.0)))
         .child(
             div()
                 .flex_1()

@@ -96,7 +96,7 @@ pub fn queue(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> A
     let body = if count == 0 {
         div()
             .pl(theme::unit(8.0))
-            .pr(theme::unit(15.0))
+            .pr(theme::unit(16.0))
             .pb(theme::unit(12.0))
             .pt(theme::unit(4.0))
             .child(
@@ -154,7 +154,7 @@ pub fn queue(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> A
             .child(reorder::Touch::new(touch))
             .child(
                 rows.pl(theme::unit(8.0))
-                    .pr(theme::unit(15.0))
+                    .pr(theme::unit(16.0))
                     .pb(theme::unit(gap))
                     .pt(theme::unit(4.0)),
             )

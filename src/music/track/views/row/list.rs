@@ -208,6 +208,7 @@ pub fn list(
 
     div()
         .id(row_id.clone())
+        .debug_selector(move || format!("song-row-{index}"))
         .relative()
         .w_full()
         .h(theme::unit(shape.height()))
@@ -215,7 +216,14 @@ pub fn list(
         .items_center()
         .justify_between()
         .gap(theme::unit(if shape == Shape::Video { 12.0 } else { 8.0 }))
-        .px(theme::unit(12.0))
+        // Jota's row is `pl-4 pr-2` on the phone; the panel keeps the right
+        // gutter, so the row's own 8 lands 24 from the edge next to the play.
+        .when(crate::shared::ui::views::components::narrow(), |row| {
+            row.pl(theme::unit(16.0)).pr(theme::unit(8.0))
+        })
+        .when(!crate::shared::ui::views::components::narrow(), |row| {
+            row.px(theme::unit(12.0))
+        })
         .border_b_1()
         .border_color(theme::ZINC_900)
         .when(!broken, |this| {

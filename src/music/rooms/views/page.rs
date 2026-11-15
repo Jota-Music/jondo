@@ -1,3 +1,4 @@
+use gpui::prelude::FluentBuilder as _;
 use gpui::{AnyElement, Context, IntoElement, ParentElement, Styled, Window, div};
 use gpui_kit::component::input::InputEvent;
 
@@ -151,15 +152,24 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> An
         .flex()
         .flex_col()
         .gap(theme::unit(16.0))
-        .child(div().flex().items_center().child(inline(
-            "rooms-join",
-            t("Join or host a room"),
-            icons::LOG_IN,
-            cx.listener(|app, _: &gpui::ClickEvent, window, cx| {
-                app.open_rooms(window, cx);
-                cx.notify();
-            }),
-        )));
+        .child(
+            div()
+                .flex()
+                .items_center()
+                // Jota's join row is `px-3 pt-4` on the phone.
+                .when(crate::shared::ui::views::components::narrow(), |row| {
+                    row.px(theme::unit(12.0)).pt(theme::unit(16.0))
+                })
+                .child(inline(
+                    "rooms-join",
+                    t("Join or host a room"),
+                    icons::LOG_IN,
+                    cx.listener(|app, _: &gpui::ClickEvent, window, cx| {
+                        app.open_rooms(window, cx);
+                        cx.notify();
+                    }),
+                )),
+        );
 
     let current = rooms::room_id(&relay, &code);
     let mut items = app.store.rooms_ordered();

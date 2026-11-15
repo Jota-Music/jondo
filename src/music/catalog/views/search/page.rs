@@ -1,3 +1,4 @@
+use gpui::prelude::FluentBuilder as _;
 use gpui::{AnyElement, Context, IntoElement, ParentElement, Styled, div};
 
 use crate::music::track::views::{list, row};
@@ -18,7 +19,15 @@ pub fn show(app: &mut Jondo, cx: &mut Context<Jondo>) -> AnyElement {
             .flex()
             .flex_col()
             .child(page::panel(
-                div().size_full().p(theme::unit(16.0)).child(text::text(
+                div()
+                    .size_full()
+                    .when(crate::shared::ui::views::components::narrow(), |body| {
+                        body.px(theme::unit(12.0)).pt(theme::unit(16.0))
+                    })
+                    .when(!crate::shared::ui::views::components::narrow(), |body| {
+                        body.p(theme::unit(16.0))
+                    })
+                    .child(text::text(
                     t("Spotify only opens a {} from a link, URI or ID. Paste one, or search by name under another type.")
                         .replace("{}", kind.label()),
                     14.0,
@@ -33,8 +42,15 @@ pub fn show(app: &mut Jondo, cx: &mut Context<Jondo>) -> AnyElement {
         .flex()
         .items_center()
         .justify_center()
-        .px(theme::unit(4.0))
-        .pt(theme::unit(4.0))
+        // The rows under it carry the page's 12 on a phone, so the query does.
+        .px(theme::unit(
+            if crate::shared::ui::views::components::narrow() {
+                12.0
+            } else {
+                4.0
+            },
+        ))
+        .pt(theme::unit(8.0))
         .pb(theme::unit(8.0))
         .child(text::truncated(
             query.clone(),

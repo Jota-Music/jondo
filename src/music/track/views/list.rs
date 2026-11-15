@@ -119,7 +119,17 @@ pub fn show(app: &mut Jondo, cx: &mut Context<Jondo>, list: List) -> AnyElement 
             }
         }))
         .when_some(touch, |this, touch| this.child(touch))
-        .child(rows.pr(theme::unit(15.0)).pb(theme::unit(gap)).h_full())
+        .child(
+            rows.pr(theme::unit(
+                if crate::shared::ui::views::components::narrow() {
+                    16.0
+                } else {
+                    15.0
+                },
+            ))
+            .pb(theme::unit(gap))
+            .h_full(),
+        )
         .child(scroll::bar(&scroll))
         .children(pill)
         .into_any_element()

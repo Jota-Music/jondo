@@ -52,19 +52,21 @@ fn bar(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> Div {
 /// the header, with the follow slot already where it will stay, and the tab
 /// content keeps its frame.
 fn skeleton(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> AnyElement {
+    let side = if crate::shared::ui::views::components::narrow() {
+        40.0
+    } else {
+        32.0
+    };
     let header = page::pending(64.0, 32.0).child(
         div()
-            .w(theme::unit(32.0))
-            .h(theme::unit(32.0))
+            .w(theme::unit(side))
+            .h(theme::unit(side))
             .flex_none()
             .flex()
             .items_center()
             .justify_center()
             .rounded(theme::unit(6.0))
-            .border_1()
-            .border_color(theme::ZINC_800)
-            .bg(theme::SURFACE)
-            .child(icons::icon(icons::HEART, 14.0, theme::ZINC_700)),
+            .child(icons::icon(icons::HEART, 18.0, theme::ZINC_700)),
     );
 
     let tab = app.ui.channel_tab.clone();
@@ -74,6 +76,10 @@ fn skeleton(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> An
         .flex()
         .items_center()
         .justify_between()
+        // The head above carries the 12 on a phone; the switcher matches it.
+        .when(crate::shared::ui::views::components::narrow(), |row| {
+            row.px(theme::unit(12.0))
+        })
         .child(
             div()
                 .flex()
@@ -213,6 +219,10 @@ pub fn show(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>) -> An
         .flex()
         .items_center()
         .justify_between()
+        // The head above carries the 12 on a phone; the switcher matches it.
+        .when(crate::shared::ui::views::components::narrow(), |row| {
+            row.px(theme::unit(12.0))
+        })
         .child(
             div()
                 .flex()
