@@ -1,4 +1,3 @@
-use std::path::Path;
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -53,7 +52,7 @@ pub(super) fn metadata(
     artist: &str,
     album: &str,
     duration: Duration,
-    artwork: Option<&Path>,
+    artwork: Option<&str>,
 ) {
     live(false);
     if let Err(error) =
@@ -62,8 +61,8 @@ pub(super) fn metadata(
         log::warn!("media session metadata: {error}");
     }
 
-    if let Some(path) = artwork
-        && let Err(error) = media_session::set_artwork(&path.display().to_string())
+    if let Some(url) = artwork
+        && let Err(error) = media_session::set_artwork(url)
     {
         log::warn!("media session artwork: {error}");
     }

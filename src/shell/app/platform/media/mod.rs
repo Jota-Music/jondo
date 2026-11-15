@@ -127,11 +127,9 @@ fn publish(app: &Jondo, cx: &gpui::App) {
     }
 
     let artist = song.artists.join(", ");
-    let artwork = song
-        .cover
-        .as_deref()
-        .and_then(crate::shared::cover::path)
-        .filter(|path| path.exists());
+    // The cover travels as the URL the source gave: Jota hands the same link to
+    // the system, and no image is ever written to the user's disk.
+    let artwork = song.cover.clone();
     let duration = if player.duration > 0.0 {
         player.duration
     } else {
@@ -142,7 +140,7 @@ fn publish(app: &Jondo, cx: &gpui::App) {
         artist: artist.clone(),
         album: song.album.clone(),
         duration: (duration.max(0.0) * 1000.0) as u64,
-        artwork: artwork.as_ref().map(|path| path.display().to_string()),
+        artwork: artwork.clone(),
     };
 
     let changed = {

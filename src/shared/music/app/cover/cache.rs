@@ -8,7 +8,7 @@ use gpui::{RenderImage, Rgba};
 /// Pixels each tier is decoded at. A row asks for the small one; the vinyl and
 /// the page headers ask for the large one.
 use super::*;
-use super::{disk::*, spin::*};
+use super::{load::*, spin::*};
 
 pub(super) struct Entry {
     pub(super) image: Arc<RenderImage>,
@@ -57,10 +57,6 @@ impl Default for Covers {
 
 impl Covers {
     pub fn new() -> Self {
-        if let Some(dir) = cache_dir() {
-            crate::shared::storage::library::trim(&dir, DISK_LIMIT);
-        }
-
         let (result_sender, receiver) = channel();
         let workers = std::thread::available_parallelism()
             .map(|value| value.get())

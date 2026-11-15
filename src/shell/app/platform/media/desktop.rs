@@ -1,5 +1,4 @@
 use std::ffi::c_void;
-use std::path::Path;
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -69,12 +68,8 @@ pub(super) fn metadata(
     artist: &str,
     album: &str,
     duration: Duration,
-    artwork: Option<&Path>,
+    artwork: Option<&str>,
 ) {
-    let cover = artwork
-        .and_then(|path| url::Url::from_file_path(path).ok())
-        .map(|url| url.to_string());
-
     let mut slot = super::lock(&CONTROLS);
     let Some(controls) = slot.as_mut() else {
         return;
@@ -84,7 +79,7 @@ pub(super) fn metadata(
         title: Some(title),
         artist: Some(artist),
         album: (!album.is_empty()).then_some(album),
-        cover_url: cover.as_deref(),
+        cover_url: artwork,
         duration: Some(duration),
     };
 
