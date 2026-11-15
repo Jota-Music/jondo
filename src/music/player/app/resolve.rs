@@ -6,7 +6,7 @@ use crate::shared::music::domain::Song;
 use crate::shared::youtube::{Stream, Youtube, candidates};
 
 pub(crate) fn external_playlist(id: &str) -> bool {
-    (id.starts_with("spotify:user:") && id.ends_with(":collection"))
+    id.starts_with("spotify:collection:")
         || id.starts_with("spotify:playlist:")
         || id.starts_with("youtube:playlist:")
 }
@@ -37,8 +37,10 @@ pub(crate) async fn resolve(
     known: Option<String>,
     fresh: bool,
 ) -> (Song, Result<Stream, String>) {
-    let fixed = song.video().filter(|id| !id.is_empty()).map(str::to_owned);
-    let linked = known.filter(|id| !id.is_empty());
+    let fixed = song.video().map(crate::shared::music::domain::id::video);
+    let linked = known
+        .filter(|id| !id.is_empty())
+        .map(|id| crate::shared::music::domain::id::video(&id));
     let mut failure = None;
     let mut tried = Vec::new();
 

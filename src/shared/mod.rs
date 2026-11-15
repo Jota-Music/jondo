@@ -8,4 +8,4 @@ pub mod platform;
 pub mod storage;
 pub mod ui;
 
-pub use music::app::{cover, discord, spotify, youtube};
+pub use music::app::{cover, discord, refresh, spotify, youtube};

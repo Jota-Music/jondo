@@ -1,6 +1,5 @@
-use std::time::Instant;
-
 use crate::shared::i18n::t;
+use crate::shared::music::domain::id;
 use crate::shared::music::domain::link::{
     YoutubeRef, direct_url, spotify_id, spotify_link, youtube_ref,
 };
@@ -56,7 +55,6 @@ impl Jondo {
         self.history
             .open(Route::Catalog(SearchType::Track, query.to_owned()));
         self.route = self.history.current().clone();
-        self.route_changed_at = Some(Instant::now());
         self.clear_selection();
         self.paint_page(cx);
     }
@@ -77,11 +75,12 @@ impl Jondo {
             let id = query.clone();
             match self.ui.search_type {
                 SearchType::Track => self.catalog_track(id, cx),
-                SearchType::Album => self.open(Route::Album(id), cx),
-                SearchType::Artist => self.open(Route::Artist(id), cx),
-                SearchType::Playlist => {
-                    self.open(Route::Playlist(format!("spotify:playlist:{id}")), cx)
-                }
+                SearchType::Album => self.open(Route::Album(id::album(&id)), cx),
+                SearchType::Artist => self.open(Route::Artist(id::artist(&id)), cx),
+                SearchType::Playlist => self.open(
+                    Route::Playlist(id::playlist(&format!("spotify:playlist:{id}"))),
+                    cx,
+                ),
                 SearchType::User => {}
             }
 
@@ -89,7 +88,7 @@ impl Jondo {
         }
 
         if self.ui.search_type == SearchType::User {
-            self.open(Route::User(query), cx);
+            self.open(Route::User(id::user(&query)), cx);
             return;
         }
 
@@ -104,10 +103,13 @@ impl Jondo {
     pub(super) fn open_spotify(&mut self, kind: &str, id: String, cx: &mut gpui::Context<Self>) {
         match kind {
             "track" => self.catalog_track(id, cx),
-            "user" => self.open(Route::User(id), cx),
-            "album" => self.open(Route::Album(id), cx),
-            "artist" => self.open(Route::Artist(id), cx),
-            "playlist" => self.open(Route::Playlist(format!("spotify:playlist:{id}")), cx),
+            "user" => self.open(Route::User(id::user(&id)), cx),
+            "album" => self.open(Route::Album(id::album(&id)), cx),
+            "artist" => self.open(Route::Artist(id::artist(&id)), cx),
+            "playlist" => self.open(
+                Route::Playlist(id::playlist(&format!("spotify:playlist:{id}"))),
+                cx,
+            ),
             _ => {}
         }
     }
@@ -163,7 +165,7 @@ impl Jondo {
         let reference = youtube_ref(&query);
         if let Some(YoutubeRef::Channel(id)) = &reference {
             self.ui.search_open = false;
-            self.open(Route::Channel(id.clone()), cx);
+            self.open(Route::Channel(id::channel(id)), cx);
             return;
         }
 
@@ -186,7 +188,6 @@ impl Jondo {
         self.ui.search_open = true;
         self.history.open(Route::Search(query.clone()));
         self.route = self.history.current().clone();
-        self.route_changed_at = Some(Instant::now());
         self.paint_page(cx);
         let list = self.search.list;
         let mut search = SearchState {

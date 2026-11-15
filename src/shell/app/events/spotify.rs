@@ -145,7 +145,7 @@ impl Jondo {
                 }
             },
             Event::SpotifyDiscography(artist_id, group, result) => {
-                self.catalog.update(cx, |catalog, _| {
+                let discography = self.catalog.update(cx, |catalog, _| {
                     catalog
                         .discography_loading
                         .remove(&(artist_id.clone(), group.clone()));
@@ -163,7 +163,34 @@ impl Jondo {
                             }
                         }
                     }
+
+                    // the enriched releases go back to the file, so the next run
+                    // opens the artist with the covers this one just fetched
+                    catalog.artists.value(&artist_id).map(|artist| {
+                        crate::shared::storage::cache::wire::Discography {
+                            name: artist.name.clone(),
+                            uri: artist.id.clone(),
+                            albums: artist
+                                .albums
+                                .iter()
+                                .map(crate::shared::storage::cache::wire::AlbumSummary::from)
+                                .collect(),
+                        }
+                    })
                 });
+
+                if let Some(discography) = discography {
+                    let artist_id = artist_id.clone();
+                    self.jobs.task(move || {
+                        let name = format!("spotify/discography/{artist_id}");
+                        if let Err(error) =
+                            crate::shared::storage::cache::put(&name, &discography, None)
+                        {
+                            log::debug!("spotify discography: {error}");
+                        }
+                    });
+                }
+
                 self.touch_library();
             }
             Event::SpotifyFollowing(result) => {

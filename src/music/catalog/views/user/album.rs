@@ -4,7 +4,7 @@ use gpui::{AnyElement, Context, IntoElement, ParentElement, Styled, div};
 
 use crate::music::track::views::{actions, list, row};
 use crate::shared::i18n::{self, t};
-use crate::shared::ui::views::components::hint;
+use crate::shared::ui::views::components::{hint, loading};
 use crate::shell::app::{Jondo, Route};
 use crate::shell::views::page::{self, Header, Play};
 
@@ -15,7 +15,7 @@ pub fn show(app: &mut Jondo, cx: &mut Context<Jondo>) -> AnyElement {
 
     let Some(album) = app.album(&id, cx) else {
         if app.catalog.read(cx).albums.loading(&id) {
-            return page::loading();
+            return skeleton();
         }
 
         return hint::plain(t("Album not found")).into_any_element();
@@ -108,4 +108,91 @@ pub fn show(app: &mut Jondo, cx: &mut Context<Jondo>) -> AnyElement {
         .child(header)
         .child(list)
         .into_any_element()
+}
+
+/// The disc before its data lands: the header keeps the frame the real one will
+/// fill and the tracklist keeps its shell, so opening an album never blanks the
+/// page to a spinner in the middle of the scenery.
+fn skeleton() -> AnyElement {
+    div()
+        .size_full()
+        .flex()
+        .flex_col()
+        .gap(theme::unit(16.0))
+        .child(page::pending(64.0, 6.0))
+        .child(loading::rows())
+        .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use gpui::{TestAppContext, VisualTestContext};
+
+    use crate::shared::music::domain::{Album, Song};
+    use crate::shared::storage::Store;
+    use crate::shared::ui::views::design::theme;
+    use crate::shell::app::{Jondo, Route};
+
+    fn home() -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("jondo-album-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        crate::shared::storage::use_home(&dir);
+        dir
+    }
+
+    fn frame(cx: &mut VisualTestContext) {
+        cx.update(|window, cx| {
+            window.draw(cx).clear(cx);
+        });
+        cx.run_until_parked();
+    }
+
+    /// Reopening a disc paints the copy already in memory: the route no longer
+    /// drops the album before fetching it, so the page keeps its header and its
+    /// tracklist instead of blanking to a skeleton.
+    #[gpui::test]
+    fn a_cached_album_opens_on_its_tracks(cx: &mut TestAppContext) {
+        home();
+        let store = Store::load();
+
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            theme::install(cx);
+        });
+
+        let (app, cx) = cx.add_window_view(|window, cx| Jondo::boot(store, window, cx));
+        cx.run_until_parked();
+        frame(cx);
+
+        app.update(cx, |app, cx| {
+            app.catalog.update(cx, |catalog, _| {
+                catalog.albums.ready(
+                    "spotify:album:one".to_owned(),
+                    Album {
+                        id: "spotify:album:one".to_owned(),
+                        name: "One".to_owned(),
+                        tracks: vec![Song {
+                            id: "spotify:track:one".to_owned(),
+                            name: "Track".to_owned(),
+                            duration: 180,
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    },
+                );
+            });
+            app.open(Route::Album("spotify:album:one".to_owned()), cx);
+            cx.notify();
+        });
+        cx.run_until_parked();
+        frame(cx);
+        frame(cx);
+
+        assert!(
+            cx.debug_bounds("page-play").is_some(),
+            "the cached disc must paint its header instead of a skeleton"
+        );
+    }
 }

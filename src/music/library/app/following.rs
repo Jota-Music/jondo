@@ -135,15 +135,9 @@ impl Jondo {
 
     pub fn follow_route(&self, follow: &Follow) -> Route {
         match follow.kind {
-            crate::shared::music::domain::FollowKind::Artist => {
-                Route::Artist(follow.target().to_owned())
-            }
-            crate::shared::music::domain::FollowKind::Channel => {
-                Route::Channel(follow.target().to_owned())
-            }
-            crate::shared::music::domain::FollowKind::User => {
-                Route::User(follow.target().to_owned())
-            }
+            crate::shared::music::domain::FollowKind::Artist => Route::Artist(follow.id.clone()),
+            crate::shared::music::domain::FollowKind::Channel => Route::Channel(follow.id.clone()),
+            crate::shared::music::domain::FollowKind::User => Route::User(follow.id.clone()),
         }
     }
 
@@ -160,11 +154,13 @@ impl Jondo {
             }
 
             match follow.kind {
-                crate::shared::music::domain::FollowKind::Artist => self.ensure_artist(&target, cx),
-                crate::shared::music::domain::FollowKind::Channel => {
-                    self.ensure_channel(&target, cx)
+                crate::shared::music::domain::FollowKind::Artist => {
+                    self.ensure_artist(&follow.id, cx)
                 }
-                crate::shared::music::domain::FollowKind::User => self.ensure_user(&target, cx),
+                crate::shared::music::domain::FollowKind::Channel => {
+                    self.ensure_channel(&follow.id, cx)
+                }
+                crate::shared::music::domain::FollowKind::User => self.ensure_user(&follow.id, cx),
             }
         }
     }

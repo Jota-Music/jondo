@@ -18,28 +18,12 @@ impl Jondo {
         }
 
         match &route {
-            Route::Playlist(id) => {
-                self.catalog
-                    .update(cx, |catalog, _| catalog.playlists.remove(id));
-            }
-            Route::Album(id) => {
-                self.catalog
-                    .update(cx, |catalog, _| catalog.albums.remove(id));
-            }
-            Route::Artist(id) => {
-                self.catalog
-                    .update(cx, |catalog, _| catalog.artists.remove(id));
-                self.catalog.update(cx, |catalog, _| {
-                    catalog.discography.retain(|(artist_id, _)| artist_id != id)
-                });
-            }
-            Route::User(username) => {
-                self.catalog
-                    .update(cx, |catalog, _| catalog.users.remove(username));
-            }
+            Route::Playlist(id) => self.reload_playlist(id, cx),
+            Route::Album(id) => self.reload_album(id, cx),
+            Route::Artist(id) => self.reload_artist(id, cx),
+            Route::User(username) => self.reload_user(username, cx),
             Route::Channel(id) => {
-                self.catalog
-                    .update(cx, |catalog, _| catalog.channels.remove(id));
+                self.reload_channel(id, cx);
                 self.ui.channel_tab = "videos".to_owned();
                 self.ui.channel_query.clear();
                 self.ui.channel_order = Order::Added;
@@ -54,7 +38,6 @@ impl Jondo {
 
         self.history.open(route);
         self.route = self.history.current().clone();
-        self.route_changed_at = Some(Instant::now());
         self.paint_page(cx);
         self.ensure_route(cx);
     }
@@ -107,7 +90,6 @@ impl Jondo {
         if self.history.back() {
             self.clear_selection();
             self.route = self.history.current().clone();
-            self.route_changed_at = Some(Instant::now());
             self.paint_page(cx);
             self.ensure_route(cx);
         }
@@ -117,7 +99,6 @@ impl Jondo {
         if self.history.forward() {
             self.clear_selection();
             self.route = self.history.current().clone();
-            self.route_changed_at = Some(Instant::now());
             self.paint_page(cx);
             self.ensure_route(cx);
         }
@@ -293,7 +274,7 @@ impl Jondo {
         }
 
         self.clipboard.busy = true;
-        let video = id.strip_prefix("youtube:").unwrap_or(&id).to_owned();
+        let video = crate::shared::music::domain::id::bare(&id).to_owned();
         let youtube = self.youtube.clone();
         self.jobs.spawn(async move {
             let result = youtube.video(&video).await.map(|video| video.song());

@@ -78,8 +78,22 @@ impl Jondo {
         }
         let rooms = cx.new(|_| rooms);
 
+        // the shelf paints from the last snapshot before the session is even
+        // checked, the same page Jota keeps under `youtube/page`
+        let youtube_playlists = crate::shared::storage::cache::get::<
+            Vec<crate::shared::storage::cache::wire::Summary>,
+        >("youtube/page")
+        .map(|summaries| {
+            summaries
+                .into_iter()
+                .map(crate::shared::storage::cache::wire::Summary::into_domain)
+                .collect()
+        })
+        .unwrap_or_default();
+
         let library = cx.new(|_| Library {
             spotify: spotify_playlists,
+            youtube: youtube_playlists,
             ..Default::default()
         });
         let catalog = cx.new(|_| Catalog::default());

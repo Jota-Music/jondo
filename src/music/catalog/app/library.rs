@@ -1,4 +1,5 @@
 use crate::shared::music::domain::{Album, ArtistView, ChannelView, UserView};
+use crate::shared::refresh::stale;
 use crate::shared::spotify;
 use crate::shell::app::{Event, Jondo};
 
@@ -74,12 +75,38 @@ impl Jondo {
             return;
         }
 
+        if let Some((album, saved)) = spotify::cached_album(id) {
+            self.catalog
+                .update(cx, |catalog, _| catalog.albums.ready(id.to_owned(), album));
+            if !stale(saved) {
+                return;
+            }
+        }
+
+        self.load_album(id, cx);
+    }
+
+    /// Fetches an album again over the copy already on screen, so reopening a
+    /// disc refreshes it in place instead of blanking the page first.
+    pub fn reload_album(&mut self, id: &str, cx: &mut gpui::Context<Self>) {
+        if self.catalog.read(cx).albums.loading(id) {
+            return;
+        }
+
+        self.load_album(id, cx);
+    }
+
+    fn load_album(&mut self, id: &str, cx: &mut gpui::Context<Self>) {
         let Some(session) = self.settings.read(cx).auth.clone() else {
             return;
         };
 
-        self.catalog
-            .update(cx, |catalog, _| catalog.albums.begin(id));
+        if !self
+            .catalog
+            .update(cx, |catalog, _| catalog.albums.fetch(id))
+        {
+            return;
+        }
 
         let id = id.to_owned();
         let http = self.http.clone();
@@ -94,12 +121,38 @@ impl Jondo {
             return;
         }
 
+        if let Some((artist, saved)) = spotify::cached_artist(id) {
+            self.catalog.update(cx, |catalog, _| {
+                catalog.artists.ready(id.to_owned(), artist)
+            });
+            if !stale(saved) {
+                return;
+            }
+        }
+
+        self.load_artist(id, cx);
+    }
+
+    /// Fetches an artist again over the copy already on screen.
+    pub fn reload_artist(&mut self, id: &str, cx: &mut gpui::Context<Self>) {
+        if self.catalog.read(cx).artists.loading(id) {
+            return;
+        }
+
+        self.load_artist(id, cx);
+    }
+
+    fn load_artist(&mut self, id: &str, cx: &mut gpui::Context<Self>) {
         let Some(session) = self.settings.read(cx).auth.clone() else {
             return;
         };
 
-        self.catalog
-            .update(cx, |catalog, _| catalog.artists.begin(id));
+        if !self
+            .catalog
+            .update(cx, |catalog, _| catalog.artists.fetch(id))
+        {
+            return;
+        }
 
         let id = id.to_owned();
         let http = self.http.clone();
@@ -127,17 +180,39 @@ impl Jondo {
     }
 
     pub fn ensure_channel(&mut self, id: &str, cx: &mut gpui::Context<Self>) {
+        if self.catalog.read(cx).channels.waiting(id) {
+            return;
+        }
+
+        if let Some((channel, saved)) = crate::shared::youtube::cached_channel(id) {
+            self.catalog.update(cx, |catalog, _| {
+                catalog.channels.ready(id.to_owned(), channel)
+            });
+            if !stale(saved) {
+                return;
+            }
+        }
+
+        self.load_channel(id, cx);
+    }
+
+    /// Fetches a channel again over the copy already on screen.
+    pub fn reload_channel(&mut self, id: &str, cx: &mut gpui::Context<Self>) {
+        if self.catalog.read(cx).channels.loading(id) {
+            return;
+        }
+
+        self.load_channel(id, cx);
+    }
+
+    fn load_channel(&mut self, id: &str, cx: &mut gpui::Context<Self>) {
         if !self
             .catalog
-            .update(cx, |catalog, _| catalog.channels.begin(id))
+            .update(cx, |catalog, _| catalog.channels.fetch(id))
         {
             return;
         }
 
-        self.load_channel(id);
-    }
-
-    pub(super) fn load_channel(&mut self, id: &str) {
         let id = id.to_owned();
         let youtube = self.youtube.clone();
         self.jobs.spawn(async move {
@@ -150,27 +225,43 @@ impl Jondo {
         self.catalog.read(cx).channels.value(id).cloned()
     }
 
-    pub fn reload_channel(&mut self, id: &str, cx: &mut gpui::Context<Self>) {
-        if self.catalog.read(cx).channels.loading(id) {
-            return;
-        }
-
-        self.catalog
-            .update(cx, |catalog, _| catalog.channels.remove(id));
-        self.load_channel(id);
-    }
-
     pub fn ensure_user(&mut self, username: &str, cx: &mut gpui::Context<Self>) {
         if self.catalog.read(cx).users.waiting(username) {
             return;
         }
 
+        if let Some((user, saved)) = spotify::cached_user(username) {
+            self.catalog.update(cx, |catalog, _| {
+                catalog.users.ready(username.to_owned(), user)
+            });
+            if !stale(saved) {
+                return;
+            }
+        }
+
+        self.load_user(username, cx);
+    }
+
+    /// Fetches a profile again over the copy already on screen.
+    pub fn reload_user(&mut self, username: &str, cx: &mut gpui::Context<Self>) {
+        if self.catalog.read(cx).users.loading(username) {
+            return;
+        }
+
+        self.load_user(username, cx);
+    }
+
+    fn load_user(&mut self, username: &str, cx: &mut gpui::Context<Self>) {
         let Some(session) = self.settings.read(cx).auth.clone() else {
             return;
         };
 
-        self.catalog
-            .update(cx, |catalog, _| catalog.users.begin(username));
+        if !self
+            .catalog
+            .update(cx, |catalog, _| catalog.users.fetch(username))
+        {
+            return;
+        }
 
         let username = username.to_owned();
         let http = self.http.clone();

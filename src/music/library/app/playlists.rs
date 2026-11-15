@@ -48,22 +48,32 @@ impl Jondo {
             return;
         }
 
-        self.catalog
-            .update(cx, |catalog, _| catalog.playlists.remove(id));
         self.load_playlist(id, cx);
     }
 
     pub(super) fn load_playlist(&mut self, id: &str, cx: &mut gpui::Context<Self>) {
-        if id.starts_with("local:") || self.catalog.read(cx).playlists.loading(id) {
+        if id.starts_with("local:playlist:") {
             return;
         }
 
         if let Some(youtube_id) = id.strip_prefix("youtube:playlist:") {
+            if let Some((playlist, saved)) = self.youtube.cached_playlist(youtube_id) {
+                self.remember(id, playlist, cx);
+                if !crate::shared::refresh::stale(saved) {
+                    return;
+                }
+            }
+
+            if !self
+                .catalog
+                .update(cx, |catalog, _| catalog.playlists.fetch(id))
+            {
+                return;
+            }
+
             let id = id.to_owned();
             let youtube_id = youtube_id.to_owned();
             let youtube = self.youtube.clone();
-            self.catalog
-                .update(cx, |catalog, _| catalog.playlists.begin(&id));
             self.jobs.spawn(async move {
                 let result = youtube.playlist(&youtube_id).await;
                 Event::YouTubePlaylist(id, result)
@@ -75,9 +85,14 @@ impl Jondo {
             return;
         };
 
-        if let Some(track) = id.strip_prefix("spotify:radio:track:") {
-            self.catalog
-                .update(cx, |catalog, _| catalog.playlists.begin(id));
+        if let Some(track) = id.strip_prefix("spotify:radio:") {
+            if !self
+                .catalog
+                .update(cx, |catalog, _| catalog.playlists.fetch(id))
+            {
+                return;
+            }
+
             let id = id.to_owned();
             let track = track.to_owned();
             let http = self.http.clone();
@@ -88,9 +103,14 @@ impl Jondo {
             return;
         }
 
-        if id.starts_with("spotify:user:") && id.ends_with(":collection") {
-            self.catalog
-                .update(cx, |catalog, _| catalog.playlists.begin(id));
+        if id.starts_with("spotify:collection:") {
+            if !self
+                .catalog
+                .update(cx, |catalog, _| catalog.playlists.fetch(id))
+            {
+                return;
+            }
+
             let id = id.to_owned();
             let http = self.http.clone();
             self.jobs.spawn(async move {
@@ -104,8 +124,13 @@ impl Jondo {
             return;
         };
 
-        self.catalog
-            .update(cx, |catalog, _| catalog.playlists.begin(id));
+        if !self
+            .catalog
+            .update(cx, |catalog, _| catalog.playlists.fetch(id))
+        {
+            return;
+        }
+
         let id = id.to_owned();
         let spotify_id = spotify_id.to_owned();
         let http = self.http.clone();

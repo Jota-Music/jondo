@@ -32,14 +32,6 @@ impl<T> Load<T> {
         }
     }
 
-    pub fn failed(error: impl Into<String>) -> Self {
-        Self {
-            value: None,
-            loading: false,
-            error: Some(error.into()),
-        }
-    }
-
     pub fn begin(&mut self) {
         self.loading = true;
         self.error = None;
@@ -145,17 +137,20 @@ impl<K: Eq + Hash + Clone, V> Pending<K, V> {
             .is_some_and(|entry| entry.value.is_some() || entry.loading || entry.error.is_some())
     }
 
-    /// Marks the fetch in flight. Returns false when the resource is already
-    /// ready, loading or failed, so the caller can skip the request.
-    pub fn begin<Q>(&mut self, key: &Q) -> bool
+    /// Marks the fetch in flight. Returns false when one is already on its way,
+    /// so the caller can skip the request. A value already on screen stays put
+    /// and a previous error is cleared: the page keeps painting what it has
+    /// while the new one lands instead of blanking to a skeleton.
+    pub fn fetch<Q>(&mut self, key: &Q) -> bool
     where
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized + ToOwned<Owned = K>,
     {
-        if self.waiting(key) {
+        let entry = self.entries.entry(key.to_owned()).or_default();
+        if entry.loading {
             return false;
         }
-        self.entries.entry(key.to_owned()).or_default().begin();
+        entry.begin();
         true
     }
 
@@ -164,7 +159,9 @@ impl<K: Eq + Hash + Clone, V> Pending<K, V> {
     }
 
     pub fn fail(&mut self, key: K, error: impl Into<String>) {
-        self.entries.insert(key, Load::failed(error));
+        let entry = self.entries.entry(key).or_default();
+        entry.loading = false;
+        entry.error = Some(error.into());
     }
 
     /// Drops the children of a parent, whose ids are no longer valid.
@@ -212,5 +209,37 @@ impl<K: Eq + Hash + Clone, V> Pending<K, V> {
 
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Pending;
+
+    #[test]
+    fn a_fetch_over_a_ready_value_keeps_it_on_screen() {
+        let mut pending = Pending::<String, u8>::default();
+        pending.ready("a".to_owned(), 1);
+
+        assert!(pending.fetch("a"), "a ready entry can be fetched again");
+        assert_eq!(
+            pending.value("a"),
+            Some(&1),
+            "the value under the fetch stays for the page to paint"
+        );
+        assert!(pending.loading("a"));
+        assert!(!pending.fetch("a"), "one fetch at a time");
+    }
+
+    #[test]
+    fn a_failed_fetch_keeps_the_value_it_already_had() {
+        let mut pending = Pending::<String, u8>::default();
+        pending.ready("a".to_owned(), 1);
+        pending.fetch("a");
+
+        pending.fail("a".to_owned(), "offline");
+        assert_eq!(pending.value("a"), Some(&1));
+        assert!(!pending.loading("a"));
+        assert!(pending.failed("a"));
     }
 }

@@ -13,11 +13,27 @@ impl Jondo {
                 match result {
                     Ok(playlists) => {
                         log::info!("youtube: library loaded: {} playlists", playlists.len());
+                        let snapshot = playlists.clone();
                         self.library
                             .update(cx, |library, _| library.youtube = playlists);
                         self.settings
                             .update(cx, |settings, _| settings.youtube_expired = false);
                         self.touch_library();
+
+                        // the snapshot the next launch paints from, as Jota
+                        // writes it under `youtube/page`
+                        self.jobs.task(move || {
+                            let summaries: Vec<crate::shared::storage::cache::wire::Summary> =
+                                snapshot
+                                    .iter()
+                                    .map(crate::shared::storage::cache::wire::Summary::from)
+                                    .collect();
+                            if let Err(error) =
+                                crate::shared::storage::cache::put("youtube/page", &summaries, None)
+                            {
+                                log::debug!("youtube page: {error}");
+                            }
+                        });
                     }
 
                     Err(error)
