@@ -271,7 +271,7 @@ impl From<WireSong> for Song {
         let youtube_id = song
             .youtube_id
             .filter(|id| !id.is_empty())
-            .or_else(|| song.id.strip_prefix("youtube:").map(str::to_owned))
+            .or_else(|| song.id.strip_prefix("youtube:track:").map(str::to_owned))
             .filter(|id| !id.is_empty());
         Self {
             id: song.id,
@@ -284,6 +284,7 @@ impl From<WireSong> for Song {
                 .collect(),
             album: song.album.title,
             album_id: (!song.album.id.is_empty()).then_some(song.album.id),
+            album_year: song.album.year,
             playlist_id: None,
             artist_ids: Vec::new(),
             cover: song.album.covers.into_iter().next(),

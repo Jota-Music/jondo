@@ -36,13 +36,26 @@ fn is_local(source: &Source) -> bool {
 }
 
 impl Playlist {
+    /// The ids the playlist carries, in the names the app writes now.
+    pub fn normalize(&mut self) {
+        self.id = super::id::playlist(&self.id);
+
+        if let Some(owner) = self.owner_id.clone() {
+            self.owner_id = Some(super::id::channel(&owner));
+        }
+
+        for song in self.songs.iter_mut() {
+            song.normalize();
+        }
+    }
+
     pub fn is_local(&self) -> bool {
-        self.id.starts_with("local:")
+        self.id.starts_with("local:playlist:")
     }
 
     /// Liked Songs is a user context, not a playlist the rootlist carries.
     pub fn liked(&self) -> bool {
-        self.id.starts_with("spotify:user:") && self.id.ends_with(":collection")
+        self.id.starts_with("spotify:collection:")
     }
 
     /// Song radio is a synthetic context, not a playlist that can be followed.

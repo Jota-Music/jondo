@@ -59,7 +59,7 @@ pub fn album_part(song: &Song) -> Option<Part> {
         .playlist_id
         .as_ref()
         .filter(|id| !id.is_empty())
-        .map(|id| Route::Playlist(format!("youtube:playlist:{id}")))
+        .map(|id| Route::Playlist(crate::shared::music::domain::id::playlist(id)))
         .or_else(|| {
             song.album_id
                 .as_ref()

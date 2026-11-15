@@ -178,7 +178,7 @@ mod link_tests {
             Some(Link {
                 kind: Kind::Song,
                 text: "https://youtu.be/dQw4w9WgXcQ".to_owned(),
-                target: Target::Song("youtube:dQw4w9WgXcQ".to_owned()),
+                target: Target::Song("youtube:track:dQw4w9WgXcQ".to_owned()),
             })
         );
     }

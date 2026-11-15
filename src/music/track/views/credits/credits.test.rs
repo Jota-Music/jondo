@@ -43,7 +43,7 @@ fn the_album_can_be_painted_alone() {
 fn youtube_playlists_open_the_playlist() {
     let mut song = song();
     song.source = Source::YouTube;
-    song.playlist_id = Some("PLabc".to_owned());
+    song.playlist_id = Some("youtube:playlist:PLabc".to_owned());
     assert_eq!(
         parts(&song, true).last().unwrap().route,
         Some(Route::Playlist("youtube:playlist:PLabc".to_owned()))

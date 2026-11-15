@@ -26,5 +26,5 @@ fn is_zero(value: &u64) -> bool {
 /// The identity of a saved room: the relay plus its code, so the same room at
 /// the same relay is one entry however it was typed.
 pub fn room_id(relay: &str, code: &str) -> String {
-    format!("{}|{}", relay.trim().to_lowercase(), code.trim())
+    super::id::room(&format!("{}|{}", relay.trim().to_lowercase(), code.trim()))
 }

@@ -44,7 +44,12 @@ pub fn parse(text: &str) -> Option<Link> {
     }
 
     let (kind, target) = match youtube_link(text)? {
-        YoutubeRef::Video(id) => (Kind::Song, Target::Song(format!("youtube:{id}"))),
+        YoutubeRef::Video(id) => (
+            Kind::Song,
+            Target::Song(crate::shared::music::domain::id::track(&format!(
+                "youtube:{id}"
+            ))),
+        ),
         YoutubeRef::Playlist(id) => (
             Kind::Playlist,
             Target::Route(Route::Playlist(format!("youtube:playlist:{id}"))),

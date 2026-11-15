@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn liked_songs_is_a_user_context() {
     let liked = Playlist {
-        id: "spotify:user:bob:collection".to_owned(),
+        id: "spotify:collection:bob".to_owned(),
         ..Default::default()
     };
 

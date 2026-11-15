@@ -34,19 +34,15 @@ fn is_artist(kind: &FollowKind) -> bool {
 impl Follow {
     pub fn key(kind: FollowKind, id: &str) -> String {
         match kind {
-            FollowKind::Artist => format!("artist:{id}"),
-            FollowKind::Channel => format!("youtube:{id}"),
-            FollowKind::User => id.to_owned(),
+            FollowKind::Artist => super::id::artist(id),
+            FollowKind::Channel => super::id::channel(id),
+            FollowKind::User => super::id::user(id),
         }
     }
 
     /// The id the source service understands, without the follow key prefix.
     pub fn target(&self) -> &str {
-        self.id
-            .strip_prefix("artist:")
-            .or_else(|| self.id.strip_prefix("youtube:"))
-            .or_else(|| self.id.strip_prefix("user:"))
-            .unwrap_or(&self.id)
+        super::id::bare(&self.id)
     }
 
     pub fn spotify(kind: FollowKind, id: &str, name: &str, image: Option<String>) -> Self {
@@ -77,6 +73,19 @@ impl Follow {
             return Self::default();
         }
 
+        // the shape this app writes now
+        if let Some((_, kind, id)) = super::id::parts(value) {
+            match kind {
+                super::id::Kind::Artist => {
+                    return Self::spotify(FollowKind::Artist, id, id, None);
+                }
+                super::id::Kind::User => return Self::spotify(FollowKind::User, id, id, None),
+                super::id::Kind::Channel => return Self::youtube(id, id, None),
+                _ => {}
+            }
+        }
+
+        // the shapes this app wrote before the rule
         if let Some(id) = value
             .strip_prefix("artist:")
             .or_else(|| value.strip_prefix("spotify:artist:"))
@@ -84,15 +93,15 @@ impl Follow {
             return Self::spotify(FollowKind::Artist, id, id, None);
         }
 
-        if let Some(id) = value.strip_prefix("youtube:") {
-            return Self::youtube(id, id, None);
-        }
-
         if let Some(id) = value
             .strip_prefix("user:")
             .or_else(|| value.strip_prefix("spotify:user:"))
         {
             return Self::spotify(FollowKind::User, id, id, None);
+        }
+
+        if let Some(id) = value.strip_prefix("youtube:") {
+            return Self::youtube(id, id, None);
         }
 
         // A bare base62 id is an artist Jondo wrote before follows carried a
