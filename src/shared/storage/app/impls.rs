@@ -233,11 +233,15 @@ impl Store {
     }
 
     pub(super) fn write_to(&self, path: &Path) {
+        // The closing path writes on the UI thread while the writer thread may
+        // still hold an earlier snapshot, so both files take the lock: the
+        // queue is a temporary write and a rename of its own, and two of those
+        // over the same name leave one mixed file behind.
+        let _writing = WRITING.lock().unwrap_or_else(PoisonError::into_inner);
+
         // the queue is the big one and it lives in the cache folder, so the
         // state file is written without it
         queue::save(path, &self.queue, self.queue_index);
-
-        let _writing = WRITING.lock().unwrap_or_else(PoisonError::into_inner);
 
         if let Some(parent) = path.parent()
             && let Err(error) = fs::create_dir_all(parent)
