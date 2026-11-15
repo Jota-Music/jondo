@@ -8,7 +8,7 @@
 use std::collections::BTreeMap;
 
 use crate::shared::music::domain::{Song, Source};
-use crate::shared::storage::{LocalPlaylist, Store};
+use crate::shared::storage::{LocalPlaylist, Store, links};
 
 use super::{document::*, format::*, sync::*};
 
@@ -147,11 +147,12 @@ pub(super) fn playlists(
     }
 
     for id in &store.youtube_picks {
-        let Some(video) = store.youtube_links.get(id) else {
+        let Some(video) = links::read(id) else {
             continue;
         };
 
-        section.songs.entry(id.clone()).or_default().youtube_id = video.clone();
+        section.songs.entry(id.clone()).or_default().youtube_id =
+            crate::shared::music::domain::id::bare(&video).to_owned();
     }
 
     let mut changed = 0;
@@ -204,7 +205,7 @@ pub(super) fn local_playlist(item: &WirePlaylist, section: &Playlists) -> LocalP
         })
         .collect();
     LocalPlaylist {
-        id: item.id.clone(),
+        id: crate::shared::music::domain::id::playlist(&item.id),
         name: if item.name.trim().is_empty() {
             DEFAULT_NAME.to_owned()
         } else {
@@ -217,11 +218,12 @@ pub(super) fn local_playlist(item: &WirePlaylist, section: &Playlists) -> LocalP
 
 pub(super) fn song_from_wire(id: &str, entry: Option<&WireSong>, section: &Playlists) -> Song {
     let source = source_of(id);
+    let id = crate::shared::music::domain::id::track(id);
     let Some(entry) = entry else {
         return Song {
-            id: id.to_owned(),
+            id: id.clone(),
             source,
-            uri: (source == Source::Spotify).then(|| id.to_owned()),
+            uri: (source == Source::Spotify).then(|| id.clone()),
             ..Default::default()
         };
     };
@@ -267,24 +269,26 @@ pub(super) fn song_from_wire(id: &str, entry: Option<&WireSong>, section: &Playl
     }
 
     let video_id = if entry.youtube_id.is_empty() {
-        video_of(id)
+        video_of(&id)
     } else {
         Some(entry.youtube_id.clone())
     };
+    let video_id = video_id.map(|id| crate::shared::music::domain::id::video(&id));
 
     Song {
-        id: id.to_owned(),
+        id: id.clone(),
         name: entry.name.clone(),
         artists,
         album,
         album_id,
+        album_year: 0,
         playlist_id: None,
         artist_ids,
         cover,
         duration: u32::try_from(entry.duration.max(0)).unwrap_or_default(),
         source,
         video_id,
-        uri: (source == Source::Spotify).then(|| id.to_owned()),
+        uri: (source == Source::Spotify).then(|| id.clone()),
         broken: entry.broken,
     }
 }

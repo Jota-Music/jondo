@@ -1,4 +1,5 @@
 use super::{location::*, widgets::*};
+use crate::shared::i18n::t;
 
 #[test]
 fn a_content_uri_name_is_decoded() {
@@ -9,15 +10,18 @@ fn a_content_uri_name_is_decoded() {
     assert_eq!(decoded("jota.backup.json"), "jota.backup.json");
 }
 
+/// The place is a label, so it follows the active language: the test asks for
+/// the same key the view shows instead of pinning it to one translation, which
+/// made the assertion lose against whichever test set the locale first.
 #[test]
 fn a_place_is_read_from_the_authority() {
     assert_eq!(
         place("content://com.google.android.apps.docs.storage/document/abc"),
-        "Google Drive"
+        t("Google Drive")
     );
     assert_eq!(
         place("content://com.android.externalstorage.documents/tree/primary"),
-        "Phone"
+        t("Phone")
     );
     assert_eq!(place("/home/me/backup"), "");
 }

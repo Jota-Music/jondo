@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use serde_json::Value;
 
 use crate::shared::music::domain::{Song, Source};
-use crate::shared::storage::{LocalPlaylist, Store};
+use crate::shared::storage::{LocalPlaylist, Store, links};
 
 use super::*;
 use super::{document::*, format::*, playlists::*, sections::*, stage::*, sync::*};
@@ -40,14 +40,16 @@ fn playlist(id: &str, name: &str, modified: u64) -> LocalPlaylist {
 #[test]
 fn the_document_matches_the_wire_shape_jota_writes() {
     let mut store = Store::default();
-    store.playlists.push(playlist("local:abc", "Mix", 1));
+    store
+        .playlists
+        .push(playlist("local:playlist:abc", "Mix", 1));
     store
         .follows
         .push(crate::shared::music::domain::Follow::canonical(
             "spotify:artist:1",
         ));
-    store.follows_at.insert("artist:1".to_owned(), 5);
-    store.order = vec!["local:abc".to_owned()];
+    store.follows_at.insert("spotify:artist:1".to_owned(), 5);
+    store.order = vec!["local:playlist:abc".to_owned()];
     store.order_at = 7;
 
     let mut document = Document::default();
@@ -77,7 +79,7 @@ fn the_document_matches_the_wire_shape_jota_writes() {
     assert!(value["playlists"]["songs"]["spotify:track:abc"]["album"]["id"].is_string());
     assert_eq!(value["follows"]["items"][0]["at"], 5);
     assert_eq!(value["order"][0]["scope"], "library");
-    assert_eq!(value["order"][0]["ids"][0], "local:abc");
+    assert_eq!(value["order"][0]["ids"][0], "local:playlist:abc");
     assert!(value.get("settings").is_none());
 }
 
@@ -106,8 +108,14 @@ fn a_document_pick_does_not_replace_a_local_pick() {
     let mut document = Document::parse(text).unwrap();
     playlists(&mut document, &mut store, Mode::Newer, true);
 
-    assert_eq!(store.youtube_links["spotify:track:a"], "mine");
-    assert_eq!(store.youtube_links["spotify:track:b"], "theirs2");
+    assert_eq!(
+        links::read("spotify:track:a").as_deref(),
+        Some("youtube:track:mine")
+    );
+    assert_eq!(
+        links::read("spotify:track:b").as_deref(),
+        Some("youtube:track:theirs2")
+    );
     assert!(store.youtube_picks.contains("spotify:track:b"));
 }
 
@@ -135,9 +143,12 @@ fn a_document_written_elsewhere_round_trips_through_the_store() {
     assert_eq!(store.playlists.len(), 1);
     assert_eq!(store.playlists[0].name, "From Jota");
     assert_eq!(store.playlists[0].modified, 2);
-    assert_eq!(store.playlists[0].songs[0].video_id.as_deref(), Some("xyz"));
-    assert_eq!(store.playlist_graves["local:gone"], 1000);
-    assert_eq!(store.order, vec!["local:one".to_owned()]);
+    assert_eq!(
+        store.playlists[0].songs[0].video_id.as_deref(),
+        Some("youtube:track:xyz")
+    );
+    assert_eq!(store.playlist_graves["local:playlist:gone"], 1000);
+    assert_eq!(store.order, vec!["local:playlist:one".to_owned()]);
 
     let rendered = serde_json::to_string(&document).unwrap();
     assert!(rendered.contains("\"sessions\":{\"spotify\""));
@@ -146,9 +157,11 @@ fn a_document_written_elsewhere_round_trips_through_the_store() {
 #[test]
 fn a_tombstone_keeps_a_playlist_from_coming_back() {
     let mut store = Store::default();
-    store.playlist_graves.insert("local:dead".to_owned(), 5000);
+    store
+        .playlist_graves
+        .insert("local:playlist:dead".to_owned(), 5000);
     let text = r#"{"version":1,"playlists":{"items":[
-        {"id":"local:dead","source":"local","name":"Back","modifiedAt":4000,"songs":[]}
+        {"id":"local:playlist:dead","source":"local","name":"Back","modifiedAt":4000,"songs":[]}
     ]}}"#;
     let mut document = Document::parse(text).unwrap();
     playlists(&mut document, &mut store, Mode::Newer, true);
@@ -158,7 +171,9 @@ fn a_tombstone_keeps_a_playlist_from_coming_back() {
 #[test]
 fn newer_copy_wins_and_metadata_is_additive() {
     let mut store = Store::default();
-    store.playlists.push(playlist("local:abc", "Mine", 1));
+    store
+        .playlists
+        .push(playlist("local:playlist:abc", "Mine", 1));
     let text = r#"{"version":1,"playlists":{"items":[
         {"id":"local:abc","source":"local","name":"Theirs","modifiedAt":9000,
          "songs":[{"id":"spotify:track:abc"},{"id":"spotify:track:def"}]}
@@ -180,7 +195,9 @@ fn a_pass_writes_the_document_and_reads_it_back() {
     let folder_text = folder.display().to_string();
 
     let mut store = Store::default();
-    store.playlists.push(playlist("local:abc", "Mix", 1));
+    store
+        .playlists
+        .push(playlist("local:playlist:abc", "Mix", 1));
     store.sync_folder = folder_text.clone();
 
     let stats = save(&mut store).unwrap();
@@ -247,7 +264,9 @@ fn a_settled_folder_is_a_stat_and_a_change_is_not() {
         sync_folder: folder_text,
         ..Default::default()
     };
-    store.playlists.push(playlist("local:abc", "Mix", 1));
+    store
+        .playlists
+        .push(playlist("local:playlist:abc", "Mix", 1));
 
     let stats = save(&mut store).unwrap();
     assert!(stats.modified);
@@ -297,7 +316,9 @@ fn the_overwrite_job_is_the_one_that_replaces_a_document_a_save_refuses() {
         sync_folder: folder.display().to_string(),
         ..Default::default()
     };
-    store.playlists.push(playlist("local:abc", "Mix", 1));
+    store
+        .playlists
+        .push(playlist("local:playlist:abc", "Mix", 1));
 
     assert!(
         Job::Save.run(&mut store).is_err(),
@@ -353,7 +374,9 @@ fn a_copy_the_provider_served_from_its_cache_is_not_written_over() {
     .unwrap();
 
     let mut store = Store::default();
-    store.playlists.push(playlist("local:abc", "Mine", 1));
+    store
+        .playlists
+        .push(playlist("local:playlist:abc", "Mine", 1));
     store.sync_folder = "content://doc".to_owned();
     store.sync_status.uri = "content://doc".to_owned();
     store.sync_status.write_at = 5000;
@@ -398,8 +421,10 @@ fn a_cached_stamp_is_only_trusted_for_the_interval() {
 #[test]
 fn export_and_import_round_trip_a_library() {
     let mut store = Store::default();
-    store.playlists.push(playlist("local:abc", "Mix", 1));
-    store.order = vec!["local:abc".to_owned()];
+    store
+        .playlists
+        .push(playlist("local:playlist:abc", "Mix", 1));
+    store.order = vec!["local:playlist:abc".to_owned()];
     store.order_at = 5;
 
     let dir = std::env::temp_dir().join(format!(
@@ -416,7 +441,7 @@ fn export_and_import_round_trip_a_library() {
 
     assert_eq!(restored.playlists.len(), 1);
     assert_eq!(restored.playlists[0].name, "Mix");
-    assert_eq!(restored.order, vec!["local:abc".to_owned()]);
+    assert_eq!(restored.order, vec!["local:playlist:abc".to_owned()]);
 }
 
 #[test]
@@ -540,7 +565,7 @@ fn an_unknown_version_is_refused() {
 
 #[test]
 fn ids_from_another_instance_map_to_one_local_record() {
-    assert_eq!(stored_id("local:abc"), "local:abc");
+    assert_eq!(stored_id("local:playlist:abc"), "local:playlist:abc");
     assert_eq!(stored_id("abc"), stored_id("abc"));
     assert!(stored_id("abc").starts_with("local:"));
     assert_ne!(stored_id("abc"), stored_id("abd"));

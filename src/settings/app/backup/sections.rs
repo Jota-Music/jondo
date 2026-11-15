@@ -34,7 +34,7 @@ pub(super) fn follows(
         })
         .collect();
     for entry in remote.items {
-        let id = entry.id.trim();
+        let id = crate::shared::music::domain::Follow::canonical(entry.id.trim()).id;
         if id.is_empty() {
             continue;
         }
@@ -47,6 +47,7 @@ pub(super) fn follows(
 
     let mut removed = store.follow_graves.clone();
     for (id, at) in remote.removed {
+        let id = crate::shared::music::domain::Follow::canonical(&id).id;
         if at > *removed.get(&id).unwrap_or(&0) {
             removed.insert(id, at);
         }
@@ -130,23 +131,25 @@ pub(super) fn saved(document: &mut Document, store: &mut Store, mode: Mode, appl
         })
         .collect();
 
-    for entry in remote.items {
-        let id = entry.id.trim();
+    for mut entry in remote.items {
+        let id = crate::shared::music::domain::id::playlist(entry.id.trim());
         if id.is_empty() {
             continue;
         }
+        entry.id = id.clone();
 
-        match items.get_mut(id) {
+        match items.get_mut(&id) {
             Some(known) if entry.at > known.at => *known = entry,
             Some(_) => {}
             None => {
-                items.insert(id.to_owned(), entry);
+                items.insert(id, entry);
             }
         }
     }
 
     let mut removed = store.saved_graves.clone();
     for (id, at) in remote.removed {
+        let id = crate::shared::music::domain::id::playlist(&id);
         if at > *removed.get(&id).unwrap_or(&0) {
             removed.insert(id, at);
         }
@@ -288,14 +291,22 @@ pub(super) fn order(document: &mut Document, store: &mut Store, mode: Mode, appl
         if let Some(entry) = shelves.get(&("library".to_owned(), account.clone()))
             && (entry.at != store.order_at || entry.ids != store.order)
         {
-            store.order = entry.ids.clone();
+            store.order = entry
+                .ids
+                .iter()
+                .map(|id| crate::shared::music::domain::id::playlist(id))
+                .collect();
             store.order_at = entry.at;
         }
 
         if let Some(entry) = shelves.get(&("rooms".to_owned(), String::new()))
             && (entry.at != store.room_at || entry.ids != store.room_order)
         {
-            store.room_order = entry.ids.clone();
+            store.room_order = entry
+                .ids
+                .iter()
+                .map(|id| crate::shared::music::domain::id::room(id))
+                .collect();
             store.room_at = entry.at;
         }
     }

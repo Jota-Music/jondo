@@ -24,10 +24,10 @@ pub(crate) fn is_false(value: &bool) -> bool {
 /// instance, so every device maps it to the same record.
 pub(crate) fn stored_id(id: &str) -> String {
     if id.starts_with("local:") {
-        return id.to_owned();
+        return crate::shared::music::domain::id::playlist(id);
     }
 
-    format!("local:{:016x}", fnv1a64(id))
+    crate::shared::music::domain::id::playlist(&format!("local:{:016x}", fnv1a64(id)))
 }
 
 pub(crate) fn fnv1a64(text: &str) -> u64 {
@@ -99,15 +99,22 @@ pub(crate) fn artist_id(id: &str) -> String {
 }
 
 pub(crate) fn artist_key(id: &str, source: Source) -> String {
-    if id.contains(':') || source == Source::Local {
-        return id.to_owned();
+    let bare = id
+        .strip_prefix("spotify:artist:")
+        .or_else(|| id.strip_prefix("youtube:channel:"))
+        .unwrap_or(id);
+    let bare = public_id(bare);
+
+    if source == Source::YouTube {
+        return crate::shared::music::domain::id::channel(&bare);
     }
 
-    format!("{}:{id}", source_name(source))
+    crate::shared::music::domain::id::artist(&bare)
 }
 
 pub(crate) fn video_of(id: &str) -> Option<String> {
-    id.strip_prefix("youtube:")
+    id.strip_prefix("youtube:track:")
+        .or_else(|| id.strip_prefix("youtube:"))
         .filter(|value| !value.is_empty())
         .map(str::to_owned)
 }
@@ -151,7 +158,9 @@ impl Refs {
         let covers: Vec<String> = song.cover.iter().cloned().collect();
         let album = match &song.album_id {
             Some(id) if !id.is_empty() => {
-                let id = format!("spotify:album:{}", public_id(id));
+                let id = crate::shared::music::domain::id::album(&public_id(
+                    id.strip_prefix("spotify:album:").unwrap_or(id),
+                ));
                 self.albums.entry(id.clone()).or_insert_with(|| WireAlbum {
                     title: song.album.clone(),
                     covers: covers.clone(),
@@ -179,7 +188,7 @@ impl Refs {
                 .artist_ids
                 .get(index)
                 .filter(|id| !id.is_empty())
-                .map(|id| artist_key(&public_id(id), song.source));
+                .map(|id| artist_key(id, song.source));
             match id {
                 Some(id) => {
                     self.artists
@@ -203,9 +212,10 @@ impl Refs {
             }
         }
 
+        // the document names the video the way YouTube does, without the
+        // prefixes the app gives it
         let youtube_id = song
-            .video_id
-            .as_deref()
+            .video()
             .filter(|id| video_of(&song.id).as_deref() != Some(*id))
             .unwrap_or_default()
             .to_owned();
