@@ -24,6 +24,11 @@ pub const LIMIT: usize = 8000;
 /// The ceiling of the playlist folder.
 pub const PLAYLIST_LIMIT: usize = 48;
 
+/// The ceiling of the cover folder. Each file is one image's bytes, so it is
+/// counted smaller than the text entries: a phone should not spend a gigabyte
+/// keeping art it can simply fetch again.
+const COVER_LIMIT: usize = 400;
+
 /// The ceiling of each folder that grows with what the user opens. A folder
 /// that is not here is never trimmed: the picks under `youtube/links` are a few
 /// bytes each, and counting them would cost more than the space. An entry that
@@ -33,6 +38,7 @@ const LIMITS: &[(&str, &str, usize)] = &[
     ("spotify/tracks", "json", LIMIT),
     ("youtube/streams", "json", LIMIT),
     ("youtube/tracks", "json", LIMIT),
+    ("covers", "json", COVER_LIMIT),
 ];
 
 /// The folders whose entries die with the URL they carry. A file older than

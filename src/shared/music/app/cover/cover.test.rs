@@ -2,6 +2,7 @@
 /// the page headers ask for the large one.
 use super::*;
 use super::{cache::*, load::*, spin::*};
+use crate::shared::storage::cache as storage;
 
 fn marked() -> image::RgbaImage {
     let mut image = image::RgbaImage::new(SPIN_SIZE, SPIN_SIZE);
@@ -86,4 +87,26 @@ fn a_cover_reaches_the_atlas_in_bgra() {
     let mut image = image::RgbaImage::new(1, 1);
     image.put_pixel(0, 0, image::Rgba([1, 2, 3, 4]));
     assert_eq!(to_bgra(image).get_pixel(0, 0), &image::Rgba([3, 2, 1, 4]));
+}
+
+/// The bytes a cover arrived as stay on disk, one file per URL, so the next
+/// launch decodes them instead of downloading the art again.
+#[test]
+fn a_cover_file_carries_the_bytes_under_the_url_that_names_it() {
+    let url = "https://i.scdn.co/image/cached-cover";
+    let name = format!("covers/{}", storage::safe_part(url));
+    let bytes = [0x89, b'P', b'N', b'G', 0x0d];
+
+    storage::write_raw(&name, &bytes).expect("the cover file");
+    assert_eq!(storage::read_raw(&name).as_deref(), Some(&bytes[..]));
+    assert!(
+        storage::path(&name).is_some(),
+        "a cover url names one file, not a folder"
+    );
+}
+
+/// A file that is not an image never reaches the atlas.
+#[test]
+fn a_file_that_is_not_an_image_is_refused() {
+    assert!(decode(b"not an image", "https://i.scdn.co/image/x").is_none());
 }

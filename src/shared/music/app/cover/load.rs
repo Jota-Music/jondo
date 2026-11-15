@@ -4,6 +4,7 @@ use super::cache::*;
 /// Pixels each tier is decoded at. A row asks for the small one; the vinyl and
 /// the page headers ask for the large one.
 use super::*;
+use crate::shared::storage::cache as storage;
 
 /// A cover file past this size is refused before it is read, so a response the
 /// screen could never show does not sit in memory first.
@@ -104,6 +105,13 @@ pub(super) fn download(client: &reqwest::blocking::Client, url: &str) -> Option<
         return None;
     }
 
+    // The bytes are kept on disk, so a launch paints the art it already has
+    // instead of downloading every cover again.
+    let name = format!("covers/{}", storage::safe_part(url));
+    if let Some(raw) = storage::read_raw(&name) {
+        return decode(&raw, url);
+    }
+
     let response = client
         .get(url)
         .header(reqwest::header::USER_AGENT, "Mozilla/5.0 Jondo")
@@ -129,15 +137,25 @@ pub(super) fn download(client: &reqwest::blocking::Client, url: &str) -> Option<
         return None;
     }
 
+    let image = decode(&raw, url)?;
+    if let Err(error) = storage::write_raw(&name, &raw) {
+        log::debug!("cover {url}: {error}");
+    }
+
+    Some(image)
+}
+
+/// The pixels a cover file carries, cropped to the square the atlas holds.
+pub(super) fn decode(raw: &[u8], url: &str) -> Option<image::RgbaImage> {
     // A small file can decode into a huge image, so the size the header carries
     // is judged before the pixels are decoded.
-    let (width, height) = dimensions(&raw)?;
+    let (width, height) = dimensions(raw)?;
     if !fits(width, height) {
         log::debug!("cover {url} is {width}x{height}");
         return None;
     }
 
-    let decoded = match image::load_from_memory(&raw) {
+    let decoded = match image::load_from_memory(raw) {
         Ok(image) => image,
         Err(error) => {
             log::debug!("cover decode failed {url}: {error}");

@@ -61,7 +61,7 @@ impl Covers {
         let workers = std::thread::available_parallelism()
             .map(|value| value.get())
             .unwrap_or(2)
-            .clamp(2, 3);
+            .clamp(4, 6);
         let mut jobs = Vec::with_capacity(workers);
         let client = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(15))
