@@ -7,7 +7,7 @@ use std::time::Duration;
 use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::DecoderOptions;
 use symphonia::core::errors::Error as SymphoniaError;
-use symphonia::core::formats::FormatOptions;
+use symphonia::core::formats::{FormatOptions, FormatReader};
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
@@ -88,21 +88,37 @@ pub(super) fn run_decoder(shared: Arc<Shared>, commands: mpsc::Receiver<Command>
     }
 }
 
-pub(super) fn decode(
-    shared: &Arc<Shared>,
-    commands: &mpsc::Receiver<Command>,
-    url: &str,
-    agent: &str,
-    start: f64,
-    epoch: u64,
-) -> Result<(), String> {
-    FIRST_PACKET.store(false, Ordering::Relaxed);
+/// The stream and its container header, read without walking the whole file.
+///
+/// The fast attempt has the source hide its seeks while the header is read: an
+/// isomp4 demuxer that can seek walks every top-level atom to the end of the
+/// stream, so a long track would be downloaded whole before the first packet
+/// decoded. A container whose header sits at the end cannot be read that way,
+/// so it falls back to the walk.
+pub(super) fn open(url: &str, agent: &str) -> Result<Box<dyn FormatReader>, String> {
     let source = HttpSource::new(url, agent)?;
+    let probing = source.probing.clone();
+    match attempt(source) {
+        Ok(format) => {
+            probing.store(false, Ordering::Relaxed);
+            Ok(format)
+        }
+        Err(error) => {
+            // A header at the end of the stream is only found by the full walk.
+            log::debug!("isomp4: the start is not the header ({error})");
+            let source = HttpSource::new(url, agent)?;
+            source.probing.store(false, Ordering::Relaxed);
+            attempt(source).map_err(|error| format!("cannot probe stream: {error}"))
+        }
+    }
+}
+
+fn attempt(source: HttpSource) -> symphonia::core::errors::Result<Box<dyn FormatReader>> {
     let mss = MediaSourceStream::new(Box::new(source), Default::default());
     let mut hint = Hint::new();
     hint.with_extension("m4a");
 
-    let probed = symphonia::default::get_probe()
+    symphonia::default::get_probe()
         .format(
             &hint,
             mss,
@@ -112,9 +128,19 @@ pub(super) fn decode(
             },
             &MetadataOptions::default(),
         )
-        .map_err(|error| format!("cannot probe stream: {error}"))?;
+        .map(|probed| probed.format)
+}
 
-    let mut format = probed.format;
+pub(super) fn decode(
+    shared: &Arc<Shared>,
+    commands: &mpsc::Receiver<Command>,
+    url: &str,
+    agent: &str,
+    start: f64,
+    epoch: u64,
+) -> Result<(), String> {
+    FIRST_PACKET.store(false, Ordering::Relaxed);
+    let mut format = open(url, agent)?;
     let track = format
         .default_track()
         .ok_or_else(|| "stream has no audio track".to_owned())?;

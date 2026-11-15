@@ -1,4 +1,4 @@
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -267,6 +267,30 @@ fn the_opening_request_fetches_the_first_chunk() {
     assert_eq!(first_read(&mut source), PART);
 }
 
+/// The header read used to cost the whole track: a source that can seek makes
+/// the isomp4 demuxer walk every atom to the end of the stream. While the
+/// header is being read the source hides its seeks, and the bytes are seekable
+/// all the same.
+#[test]
+fn the_source_hides_its_seeks_until_the_header_is_read() {
+    let server = Server::start(8 * MB, FAST, Duration::ZERO);
+    let mut source = open(&server, 128 * 1024);
+
+    assert!(!source.is_seekable(), "the probe would walk the whole stream");
+
+    let target = (4 * MB) as u64;
+    source
+        .seek(SeekFrom::Start(target))
+        .expect("seek while the header is read");
+    assert_eq!(source.position, target);
+
+    let mut buffer = [0u8; PART];
+    assert_eq!(source.read(&mut buffer).expect("read"), PART);
+
+    source.probing.store(false, Ordering::Relaxed);
+    assert!(source.is_seekable(), "the player cannot seek");
+}
+
 /// The worker fills the window around the read position and keeps it filled as
 /// the decoder moves: a chunk that arrived early must not stop the chain, or
 /// every other chunk is fetched while the decoder waits.
@@ -302,8 +326,10 @@ fn the_reader_keeps_the_window_ahead_in_memory() {
     );
 }
 
-/// The whole path, as the player runs it: resolve the stream on YouTube, then
-/// wait for the first decoded packet. Ignored because it needs the network.
+/// The whole path, as the player runs it: resolve the stream on YouTube, read
+/// the container header, then wait for the first packet. Ignored because it
+/// needs the network. Point `JONDO_BENCH_VIDEO` at a long video: the header
+/// must not cost the length of the stream.
 #[test]
 #[ignore = "hits youtube.com"]
 fn the_real_startup_is_measured_in_round_trips() {
@@ -325,16 +351,17 @@ fn the_real_startup_is_measured_in_round_trips() {
             .expect("stream resolves");
         let resolved = started.elapsed();
 
-        let mut source = HttpSource::new(&stream.url, &stream.agent).expect("open");
-        let opened = started.elapsed();
-        first_read(&mut source);
+        let mut format = super::super::decoder::open(&stream.url, &stream.agent).expect("header");
+        let header = started.elapsed();
+
+        format.next_packet().expect("first packet");
         let playing = started.elapsed();
 
         println!(
-            "round {round}: resolve {:>5.0} ms | open {:>4.0} ms | first bytes {:>4.0} ms | total {:>5.0} ms",
+            "round {round}: resolve {:>5.0} ms | header {:>4.0} ms | first packet {:>4.0} ms | total {:>5.0} ms",
             resolved.as_secs_f64() * 1000.0,
-            (opened - resolved).as_secs_f64() * 1000.0,
-            (playing - opened).as_secs_f64() * 1000.0,
+            (header - resolved).as_secs_f64() * 1000.0,
+            (playing - header).as_secs_f64() * 1000.0,
             playing.as_secs_f64() * 1000.0
         );
     }

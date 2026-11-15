@@ -1,5 +1,5 @@
 use std::io::{self, Read, Seek, SeekFrom};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::time::Duration;
@@ -19,6 +19,12 @@ pub(super) struct HttpSource {
     pub(super) position: u64,
     pub(super) length: u64,
     pub(super) chunk: u64,
+    /// Whether the container header is still being read. The isomp4 demuxer
+    /// walks every top-level atom to the end of a source it can seek, which for
+    /// a long stream is the whole track before the first packet decodes, so
+    /// while this is set the source reports itself unseekable and the walk
+    /// stops at the first fragment. The bytes are all still seekable.
+    pub(super) probing: Arc<AtomicBool>,
 }
 
 pub(super) struct Cache {
@@ -248,6 +254,7 @@ impl HttpSource {
             position: 0,
             length,
             chunk,
+            probing: Arc::new(AtomicBool::new(true)),
         })
     }
 
@@ -344,7 +351,7 @@ impl Seek for HttpSource {
 
 impl MediaSource for HttpSource {
     fn is_seekable(&self) -> bool {
-        true
+        !self.probing.load(Ordering::Relaxed)
     }
 
     fn byte_len(&self) -> Option<u64> {
