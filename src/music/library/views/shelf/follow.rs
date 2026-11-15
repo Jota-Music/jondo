@@ -100,42 +100,42 @@ pub(super) fn follow_tile(
             });
         }))
         .child(
-            div()
-                .relative()
-                .px(theme::unit(6.0))
-                .pt(theme::unit(6.0))
-                .child(art)
-                .child(
-                    div()
-                        .absolute()
-                        .left(theme::unit(10.0))
-                        .bottom(theme::unit(10.0))
-                        .child(cover::badge(follow_source(follow), 24.0)),
-                )
-                .when(local, |this| {
-                    this.child(
+            div().px(theme::unit(6.0)).pt(theme::unit(6.0)).child(
+                div()
+                    .relative()
+                    .child(art)
+                    .child(
                         div()
                             .absolute()
-                            .left(theme::unit(10.0))
-                            .top(theme::unit(10.0))
-                            .child(reveal::show(
-                                &group,
-                                reveal::button(
-                                    format!("unfollow-{}", follow.id),
-                                    icons::HEART_FILL,
-                                    14.0,
-                                    accent,
-                                    Some(theme::black(0.7)),
-                                    6.0,
-                                    cx.listener(move |app, _: &gpui::ClickEvent, _, cx| {
-                                        cx.stop_propagation();
-                                        app.toggle_follow(&follow_click, cx);
-                                        cx.notify();
-                                    }),
-                                ),
-                            )),
+                            .left(theme::unit(4.0))
+                            .bottom(theme::unit(4.0))
+                            .child(cover::badge(follow_source(follow), 24.0)),
                     )
-                }),
+                    .when(local, |this| {
+                        this.child(
+                            div()
+                                .absolute()
+                                .left(theme::unit(4.0))
+                                .top(theme::unit(4.0))
+                                .child(reveal::show(
+                                    &group,
+                                    reveal::button(
+                                        format!("unfollow-{}", follow.id),
+                                        icons::HEART_FILL,
+                                        14.0,
+                                        accent,
+                                        Some(theme::black(0.7)),
+                                        6.0,
+                                        cx.listener(move |app, _: &gpui::ClickEvent, _, cx| {
+                                            cx.stop_propagation();
+                                            app.toggle_follow(&follow_click, cx);
+                                            cx.notify();
+                                        }),
+                                    ),
+                                )),
+                        )
+                    }),
+            ),
         )
         .child(
             div()

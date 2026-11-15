@@ -169,78 +169,78 @@ pub fn tile(
             },
         )
         .child(
-            div()
-                .relative()
-                .px(theme::unit(6.0))
-                .pt(theme::unit(6.0))
-                .child(art)
-                .child(
-                    div()
-                        .absolute()
-                        .left(theme::unit(10.0))
-                        .bottom(theme::unit(10.0))
-                        .child(cover::badge(item.source, 24.0)),
-                )
-                .when(saved, |this| {
-                    this.child(
+            div().px(theme::unit(6.0)).pt(theme::unit(6.0)).child(
+                div()
+                    .relative()
+                    .child(art)
+                    .child(
                         div()
                             .absolute()
-                            .left(theme::unit(10.0))
-                            .top(theme::unit(10.0))
-                            .child(reveal::show(
-                                &group,
-                                reveal::button(
-                                    format!("shelf-save-{}", item.id),
-                                    icons::HEART_FILL,
-                                    14.0,
-                                    accent,
-                                    Some(theme::black(0.7)),
-                                    6.0,
-                                    toggle_saved,
-                                ),
-                            )),
+                            .left(theme::unit(4.0))
+                            .bottom(theme::unit(4.0))
+                            .child(cover::badge(item.source, 24.0)),
                     )
-                })
-                .when(item.is_local(), |this| {
-                    this.child(
-                        div()
-                            .absolute()
-                            .left(theme::unit(10.0))
-                            .top(theme::unit(10.0))
-                            .child(reveal::show(
-                                &group,
-                                reveal::button(
-                                    format!("shelf-remove-{}", item.id),
-                                    icons::TRASH_2,
-                                    16.0,
-                                    theme::white(0.86),
-                                    Some(theme::black(0.7)),
-                                    6.0,
-                                    remove,
-                                ),
-                            )),
-                    )
-                })
-                .when(playable, |this| {
-                    this.child(
-                        div()
-                            .absolute()
-                            .right(theme::unit(10.0))
-                            .top(theme::unit(10.0))
-                            .child(reveal::show(
-                                &group,
-                                reveal::button(
-                                    format!("shelf-play-{}", item.id),
-                                    icons::PLAY,
-                                    16.0,
-                                    theme::rgb(0xffffff),
-                                    Some(theme::black(0.8)),
-                                    6.0,
-                                    play,
-                                ),
-                            )),
-                    )
-                }),
+                    .when(saved, |this| {
+                        this.child(
+                            div()
+                                .absolute()
+                                .left(theme::unit(4.0))
+                                .top(theme::unit(4.0))
+                                .child(reveal::show(
+                                    &group,
+                                    reveal::button(
+                                        format!("shelf-save-{}", item.id),
+                                        icons::HEART_FILL,
+                                        14.0,
+                                        accent,
+                                        Some(theme::black(0.7)),
+                                        6.0,
+                                        toggle_saved,
+                                    ),
+                                )),
+                        )
+                    })
+                    .when(item.is_local(), |this| {
+                        this.child(
+                            div()
+                                .absolute()
+                                .left(theme::unit(4.0))
+                                .top(theme::unit(4.0))
+                                .child(reveal::show(
+                                    &group,
+                                    reveal::button(
+                                        format!("shelf-remove-{}", item.id),
+                                        icons::TRASH_2,
+                                        16.0,
+                                        theme::white(0.86),
+                                        Some(theme::black(0.7)),
+                                        6.0,
+                                        remove,
+                                    ),
+                                )),
+                        )
+                    })
+                    .when(playable, |this| {
+                        this.child(
+                            div()
+                                .absolute()
+                                .right(theme::unit(4.0))
+                                .top(theme::unit(4.0))
+                                .child(reveal::show(
+                                    &group,
+                                    reveal::button(
+                                        format!("shelf-play-{}", item.id),
+                                        icons::PLAY,
+                                        16.0,
+                                        theme::rgb(0xffffff),
+                                        Some(theme::black(0.8)),
+                                        6.0,
+                                        play,
+                                    ),
+                                )),
+                        )
+                    }),
+            ),
         )
         .child(
             div()
