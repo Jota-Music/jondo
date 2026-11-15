@@ -276,7 +276,10 @@ fn the_source_hides_its_seeks_until_the_header_is_read() {
     let server = Server::start(8 * MB, FAST, Duration::ZERO);
     let mut source = open(&server, 128 * 1024);
 
-    assert!(!source.is_seekable(), "the probe would walk the whole stream");
+    assert!(
+        !source.is_seekable(),
+        "the probe would walk the whole stream"
+    );
 
     let target = (4 * MB) as u64;
     source
