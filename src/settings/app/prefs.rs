@@ -1,9 +1,6 @@
 use crate::shared::i18n::t;
+use crate::shared::storage::domain::{GLOW_RANGE, MOTE_RANGE};
 use crate::shell::app::Jondo;
-
-/// The range each glow knob accepts, as the percentage its field shows.
-const GLOW_RANGE: (u8, u8) = (5, 50);
-const MOTE_RANGE: (u8, u8) = (40, 250);
 
 /// Preferences the panels write. The store is the app's, so the views ask for
 /// the change instead of touching it and remembering to persist it themselves.

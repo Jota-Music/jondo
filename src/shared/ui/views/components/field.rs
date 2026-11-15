@@ -1,11 +1,12 @@
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    App, Div, ElementId, Entity, InteractiveElement, MouseButton, ParentElement, Stateful,
-    StatefulInteractiveElement, Styled, div,
+    App, ClickEvent, Div, ElementId, Entity, InteractiveElement, MouseButton, ParentElement,
+    SharedString, Stateful, StatefulInteractiveElement, Styled, TextAlign, Window, div,
 };
 use gpui_kit::component::input::{Input, InputState};
 
 use crate::shared::i18n::t;
+use crate::shared::ui::views::components::button;
 use crate::shared::ui::views::design::{icons, theme};
 
 /// The text input the application draws inside its own box.
@@ -17,6 +18,112 @@ pub fn input(state: &Entity<InputState>) -> Input {
         .w_full()
         .px(theme::unit(0.0))
         .text_size(theme::unit(14.0))
+}
+
+/// The state a number field paints. Five bare booleans in a call would read as
+/// noise and invite swapping two of them.
+pub struct NumberState {
+    pub disabled: bool,
+    pub focused: bool,
+    pub warn: bool,
+    pub can_decrease: bool,
+    pub can_increase: bool,
+}
+
+/// A number field with the two tiles that step its value. The value is the
+/// centre of the control, the tiles carry the whole height so a thumb finds
+/// them, and the frame clips their fill to its own radius. Focus moves the
+/// border, a number past the range turns it amber, and a bound dims the tile
+/// that has nowhere left to go.
+pub fn number(
+    id: &'static str,
+    state: &Entity<InputState>,
+    look: NumberState,
+    decrease: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    increase: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> Div {
+    let step = |suffix: &str| SharedString::from(format!("{id}-{suffix}"));
+    let tint = |can: bool| {
+        if can { theme::MUTED } else { theme::ZINC_700 }
+    };
+    let border = if look.disabled {
+        theme::BORDER
+    } else if look.warn {
+        theme::AMBER
+    } else if look.focused {
+        theme::ZINC_600
+    } else {
+        theme::BORDER
+    };
+
+    div()
+        .h(theme::unit(40.0))
+        .rounded(theme::unit(6.0))
+        .border_1()
+        .border_color(border)
+        .bg(theme::SURFACE)
+        .flex()
+        .items_center()
+        .overflow_hidden()
+        .block_mouse_except_scroll()
+        .when(look.disabled, |this| this.opacity(0.5))
+        .child(button::tile(
+            step("decrease"),
+            icons::MINUS,
+            14.0,
+            tint(look.can_decrease),
+            theme::SURFACE,
+            40.0,
+            look.can_decrease,
+            t("Decrease"),
+            decrease,
+        ))
+        .child(
+            div()
+                .relative()
+                .w(theme::unit(56.0))
+                .flex_none()
+                .flex()
+                .items_center()
+                .justify_center()
+                .debug_selector(move || format!("{id}-input"))
+                .child(
+                    input(state)
+                        .disabled(look.disabled)
+                        .text_align(TextAlign::Center),
+                )
+                // A press selects the whole number, so the next keystroke
+                // replaces it: typing 30 over 12 must not read as 123. The
+                // editor keeps the keyboard; this layer only owns the press.
+                .when(!look.disabled, |this| {
+                    let state = state.clone();
+                    this.child(
+                        div()
+                            .absolute()
+                            .inset_0()
+                            .cursor_text()
+                            .block_mouse_except_scroll()
+                            .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                                state.update(cx, |state, cx| {
+                                    state.focus(window, cx);
+                                    state.select_all(window, cx);
+                                });
+                                cx.stop_propagation();
+                            }),
+                    )
+                }),
+        )
+        .child(button::tile(
+            step("increase"),
+            icons::PLUS,
+            14.0,
+            tint(look.can_increase),
+            theme::SURFACE,
+            40.0,
+            look.can_increase,
+            t("Increase"),
+            increase,
+        ))
 }
 
 /// The boxed field used by toolbars, dialogs and settings.

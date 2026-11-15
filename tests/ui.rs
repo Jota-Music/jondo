@@ -435,6 +435,48 @@ fn the_ambient_background_switch_persists(cx: &mut TestAppContext) {
         "the visuals section belongs on the settings page"
     );
 
+    // The knobs step from the number on screen, and each step lands in the
+    // store: the buttons are not decoration around the field.
+    cx.simulate_event(gpui::ScrollEvent {
+        position: at,
+        delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.0), gpui::px(300.0))),
+        ..Default::default()
+    });
+    frame(cx);
+
+    let before = jondo::shared::storage::Store::load().glow;
+    click(cx, "visuals-glow-increase");
+    assert_eq!(
+        jondo::shared::storage::Store::load().glow,
+        before + 1,
+        "the up button must raise the glow"
+    );
+    click(cx, "visuals-glow-decrease");
+    assert_eq!(
+        jondo::shared::storage::Store::load().glow,
+        before,
+        "the down button must lower it back"
+    );
+
+    // The field only takes digits: a letter is refused before it reaches the
+    // store, and the number on screen is left untouched.
+    click(cx, "visuals-glow-input");
+    let field = cx.update(|window, cx| {
+        app.update(cx, |app, cx| app.field("visuals-glow", "", "", window, cx))
+    });
+    assert_eq!(
+        field.read_with(cx, |state, _| state.selected_text().to_string()),
+        before.to_string(),
+        "a press must select the number so a keystroke replaces it"
+    );
+    cx.simulate_keystrokes("a");
+    cx.run_until_parked();
+    assert_eq!(
+        app.read_with(cx, |app, cx| app.value("visuals-glow", cx)),
+        before.to_string(),
+        "a letter must not reach the field"
+    );
+
     app.update(cx, |app, cx| {
         app.set_backdrop(false, cx);
         cx.notify();
@@ -452,6 +494,16 @@ fn the_ambient_background_switch_persists(cx: &mut TestAppContext) {
     assert!(
         !jondo::shared::storage::Store::load().backdrop,
         "the switch must survive a reload"
+    );
+
+    // With the glow off the knobs are inert: a press must not write a value
+    // behind a setting that is not painting anything.
+    let off = jondo::shared::storage::Store::load().glow;
+    click(cx, "visuals-glow-increase");
+    assert_eq!(
+        jondo::shared::storage::Store::load().glow,
+        off,
+        "a disabled stepper must not change the store"
     );
 
     // The two knobs are percentages over the same store: each one holds the

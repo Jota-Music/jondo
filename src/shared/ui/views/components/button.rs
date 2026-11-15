@@ -176,6 +176,52 @@ pub fn icon_named(
     )
 }
 
+/// An icon that owns its square and fills it while hovered, for a button that
+/// sits inside another surface: a stepper needs its own hit area to read as a
+/// button, not as a glyph floating in the frame.
+#[allow(clippy::too_many_arguments)]
+pub fn tile(
+    id: impl Into<ElementId>,
+    icon: Icon,
+    size: f32,
+    color: Rgba,
+    surface: Rgba,
+    width: f32,
+    enabled: bool,
+    label: &'static str,
+    on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    let named = label.to_owned().into();
+    actionable(
+        hover::hover_in(
+            Scope::Both,
+            id,
+            enabled,
+            move |fade| {
+                div()
+                    .w(theme::unit(width))
+                    .h_full()
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .cursor_pointer()
+                    .bg(theme::mix(surface, theme::ZINC_800, fade))
+                    .child(icons::icon(
+                        icon,
+                        size,
+                        theme::mix(color, theme::TEXT, fade),
+                    ))
+            },
+            on_click,
+        )
+        .active(|style| style.bg(theme::ZINC_700)),
+        named,
+        enabled,
+    )
+    .tooltip(move |window, cx| Tooltip::new(label.to_owned()).build(window, cx))
+}
+
 #[allow(clippy::too_many_arguments)]
 fn flat(
     scope: Scope,

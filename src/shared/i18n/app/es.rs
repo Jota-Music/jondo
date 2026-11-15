@@ -9,6 +9,8 @@ pub(super) fn spanish(key: &str) -> &str {
         "Glow intensity" => "Intensidad del brillo",
         "Particle size" => "Tamaño de las partículas",
         "Reset" => "Restablecer",
+        "Decrease" => "Bajar",
+        "Increase" => "Subir",
         "A soft glow in the colour of the playing cover, behind the content." => {
             "Un brillo suave con el color de la portada en reproducción, detrás del contenido."
         }

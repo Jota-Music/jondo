@@ -84,8 +84,15 @@ pub(super) fn interval(value: &u64) -> bool {
 /// settings field shows, so the store and the panel never disagree.
 pub const GLOW: u8 = 12;
 
+/// The range each glow knob accepts, as the percentage its field shows. The
+/// steppers, the field and the setter read it from here, so a typed value, a
+/// step and a reset all land on the same bounds.
+pub const GLOW_RANGE: (u8, u8) = (5, 50);
+
 /// The dust's size, as a percentage of the radius the field paints.
 pub const MOTE: u8 = 100;
+
+pub const MOTE_RANGE: (u8, u8) = (40, 250);
 
 pub(super) fn glow_default() -> u8 {
     GLOW

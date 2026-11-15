@@ -1,12 +1,12 @@
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, Context, Div, InteractiveElement, IntoElement, ParentElement,
+    AnyElement, Context, Div, Focusable as _, InteractiveElement, IntoElement, ParentElement,
     StatefulInteractiveElement, Styled, Window, div,
 };
 
 use crate::music::rooms::{self, Status, TokenState};
 use crate::shared::i18n::{self, t};
-use crate::shared::storage::domain::{GLOW, MOTE};
+use crate::shared::storage::domain::{GLOW, GLOW_RANGE, MOTE, MOTE_RANGE};
 use crate::shared::ui::views::components::{button, switch, text};
 use crate::shared::ui::views::design::icons::{self, Icon};
 use crate::shared::ui::views::design::theme;
@@ -74,6 +74,10 @@ pub(super) fn visuals(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jon
     let (glow, mote) = (app.store.glow, app.store.mote);
     let glow_field = app.field("visuals-glow", &glow.to_string(), "", window, cx);
     let mote_field = app.field("visuals-mote", &mote.to_string(), "", window, cx);
+    let glow_focused = glow_field.read(cx).focus_handle(cx).is_focused(window);
+    let mote_focused = mote_field.read(cx).focus_handle(cx).is_focused(window);
+    let glow_warn = out_of_range(&app.value("visuals-glow", cx), GLOW_RANGE);
+    let mote_warn = out_of_range(&app.value("visuals-mote", cx), MOTE_RANGE);
     // The arrow only acts, and only reads as live, while there is something to
     // undo: the glow is on and the number is off the one the app ships with.
     let reset_glow = enabled && glow != GLOW;
@@ -134,7 +138,25 @@ pub(super) fn visuals(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jon
                     .gap(theme::unit(16.0))
                     .child(percent(
                         t("Glow intensity"),
-                        field::disabled(&glow_field, !enabled),
+                        GLOW_RANGE,
+                        glow_warn,
+                        field::number(
+                            "visuals-glow",
+                            &glow_field,
+                            field::NumberState {
+                                disabled: !enabled,
+                                focused: glow_focused,
+                                warn: glow_warn,
+                                can_decrease: enabled && glow > GLOW_RANGE.0,
+                                can_increase: enabled && glow < GLOW_RANGE.1,
+                            },
+                            cx.listener(|app, _: &gpui::ClickEvent, window, cx| {
+                                step_glow(app, -1, window, cx)
+                            }),
+                            cx.listener(|app, _: &gpui::ClickEvent, window, cx| {
+                                step_glow(app, 1, window, cx)
+                            }),
+                        ),
                         reset_glow,
                         button::icon_named(
                             "visuals-glow-reset",
@@ -153,7 +175,25 @@ pub(super) fn visuals(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jon
                     ))
                     .child(percent(
                         t("Particle size"),
-                        field::disabled(&mote_field, !enabled),
+                        MOTE_RANGE,
+                        mote_warn,
+                        field::number(
+                            "visuals-mote",
+                            &mote_field,
+                            field::NumberState {
+                                disabled: !enabled,
+                                focused: mote_focused,
+                                warn: mote_warn,
+                                can_decrease: enabled && mote > MOTE_RANGE.0,
+                                can_increase: enabled && mote < MOTE_RANGE.1,
+                            },
+                            cx.listener(|app, _: &gpui::ClickEvent, window, cx| {
+                                step_mote(app, -1, window, cx)
+                            }),
+                            cx.listener(|app, _: &gpui::ClickEvent, window, cx| {
+                                step_mote(app, 1, window, cx)
+                            }),
+                        ),
                         reset_mote,
                         button::icon_named(
                             "visuals-mote-reset",
@@ -174,10 +214,19 @@ pub(super) fn visuals(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jon
     )
 }
 
-/// A percentage the user sets once and reads back: a field, its unit and the
-/// arrow that returns it to the value the app ships with. A reset with nothing
-/// to undo sits dimmed, so the row says which knob is off its default.
-fn percent(label: &str, field: Div, reset: bool, arrow: impl IntoElement) -> Div {
+/// A percentage the user sets once and reads back: its label, the field with
+/// its steppers, the arrow that returns it to the value the app ships with and,
+/// under the field, the range it accepts. A reset with nothing to undo sits
+/// dimmed, so the row says which knob is off its default; a number typed past
+/// the range turns the range amber, so the clamp on blur never surprises.
+fn percent(
+    label: &str,
+    range: (u8, u8),
+    warn: bool,
+    field: Div,
+    reset: bool,
+    arrow: impl IntoElement,
+) -> Div {
     div()
         .flex()
         .flex_col()
@@ -188,8 +237,7 @@ fn percent(label: &str, field: Div, reset: bool, arrow: impl IntoElement) -> Div
                 .flex()
                 .items_center()
                 .gap(theme::unit(8.0))
-                .child(field.w(theme::unit(72.0)))
-                .child(text::text("%", 12.0, theme::FAINT))
+                .child(field)
                 .child(
                     div()
                         .flex()
@@ -197,6 +245,20 @@ fn percent(label: &str, field: Div, reset: bool, arrow: impl IntoElement) -> Div
                         .child(arrow),
                 ),
         )
+        .child(text::text(
+            format!("{}–{}%", range.0, range.1),
+            12.0,
+            if warn { theme::AMBER } else { theme::FAINT },
+        ))
+}
+
+/// A number outside the range its setter clamps to. Empty and half-typed
+/// values are not warnings: the field is allowed to pass through them.
+fn out_of_range(value: &str, range: (u8, u8)) -> bool {
+    value
+        .trim()
+        .parse::<u8>()
+        .is_ok_and(|value| !(range.0..=range.1).contains(&value))
 }
 
 #[cfg(not(target_os = "android"))]
@@ -415,6 +477,58 @@ pub(super) fn wire(app: &mut Jondo, window: &mut Window, cx: &mut Context<Jondo>
     );
 }
 
+/// Moves a knob one step from what its field shows, so a half-typed value
+/// steps from the number on screen and not from the last committed one. The
+/// setter clamps, and the field takes the clamped number back.
+#[allow(clippy::too_many_arguments)]
+fn nudge(
+    app: &mut Jondo,
+    window: &mut Window,
+    cx: &mut Context<Jondo>,
+    key: &'static str,
+    delta: i16,
+    range: (u8, u8),
+    read: fn(&Jondo) -> u8,
+    change: fn(&mut Jondo, u8, &gpui::App),
+) {
+    let current = app
+        .value(key, cx)
+        .trim()
+        .parse::<u8>()
+        .unwrap_or_else(|_| read(app));
+    let next = (i16::from(current) + delta).clamp(i16::from(range.0), i16::from(range.1)) as u8;
+    change(app, next, cx);
+    app.set_field(key, &next.to_string(), window, cx);
+}
+
+fn step_glow(app: &mut Jondo, delta: i16, window: &mut Window, cx: &mut Context<Jondo>) {
+    nudge(
+        app,
+        window,
+        cx,
+        "visuals-glow",
+        delta,
+        GLOW_RANGE,
+        |app| app.store.glow,
+        Jondo::set_glow,
+    );
+    cx.notify();
+}
+
+fn step_mote(app: &mut Jondo, delta: i16, window: &mut Window, cx: &mut Context<Jondo>) {
+    nudge(
+        app,
+        window,
+        cx,
+        "visuals-mote",
+        delta,
+        MOTE_RANGE,
+        |app| app.store.mote,
+        Jondo::set_mote,
+    );
+    cx.notify();
+}
+
 fn knob(
     app: &mut Jondo,
     window: &mut Window,
@@ -426,10 +540,27 @@ fn knob(
     use gpui_kit::component::input::InputEvent;
 
     let field = app.field(key, &read(app).to_string(), "", window, cx);
+    // The field takes digits and nothing else, up to the three a percentage
+    // needs: a letter or a fourth digit never reaches the store. A number past
+    // the range is still allowed while typing and clamped when the field is
+    // done, so the caret never fights the clamp in the middle of an edit.
+    field.update(cx, |state, cx| {
+        state.set_validator(
+            |text, _| text.len() <= 3 && text.bytes().all(|byte| byte.is_ascii_digit()),
+            cx,
+        );
+    });
     app.subscriptions.push(cx.subscribe_in(
         &field,
         window,
         move |app, _, event: &InputEvent, window, cx| {
+            // A keystroke repaints so an out-of-range number can turn the range
+            // amber while it is still being typed; only a finished edit commits.
+            if matches!(event, InputEvent::Change) {
+                cx.notify();
+                return;
+            }
+
             if !matches!(event, InputEvent::Blur | InputEvent::PressEnter { .. }) {
                 return;
             }
