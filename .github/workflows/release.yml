@@ -153,6 +153,96 @@ jobs:
             jondo-*.apk
           if-no-files-found: error
 
+  macos:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - name: Version from tag
+        run: |
+          perl -0pi -e 's/^version = ".*"/version = "'"${GITHUB_REF_NAME#v}"'"/m' Cargo.toml
+      - name: Build both architectures
+        run: |
+          cargo build --release --target aarch64-apple-darwin
+          cargo build --release --target x86_64-apple-darwin
+      - name: Bundle the app
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          rm -rf Jondo.app Jondo.iconset jondo-macos-*.dmg jondo-macos-*.zip
+          mkdir -p Jondo.iconset
+          for size in 16 32 128 256 512; do
+            mkdir -p Jondo.iconset
+            sips -z "$size" "$size" assets/icon.png \
+              --out "Jondo.iconset/icon_${size}x${size}.png" >/dev/null
+            sips -z "$((size * 2))" "$((size * 2))" assets/icon.png \
+              --out "Jondo.iconset/icon_${size}x${size}@2x.png" >/dev/null
+          done
+          iconutil -c icns Jondo.iconset -o Jondo.icns
+          cat > jondo.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleName</key><string>Jondo</string>
+            <key>CFBundleDisplayName</key><string>Jondo</string>
+            <key>CFBundleIdentifier</key><string>io.github.jota_music.jondo</string>
+            <key>CFBundleExecutable</key><string>jondo</string>
+            <key>CFBundleIconFile</key><string>jondo.icns</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleShortVersionString</key><string>${version}</string>
+            <key>CFBundleVersion</key><string>${version}</string>
+            <key>NSHighResolutionCapable</key><true/>
+          </dict>
+          </plist>
+          PLIST
+          # One archive per processor: a bundle with both carries the code
+          # twice, and a Mac only ever runs one of them.
+          bundle() {
+            rm -rf Jondo.app
+            mkdir -p Jondo.app/Contents/MacOS Jondo.app/Contents/Resources
+            cp "$2" Jondo.app/Contents/MacOS/jondo
+            cp Jondo.icns Jondo.app/Contents/Resources/jondo.icns
+            cp jondo.plist Jondo.app/Contents/Info.plist
+            # Apple Silicon refuses a bundle with no signature at all, so the
+            # bundle gets an ad-hoc one. It is still not notarized: Gatekeeper
+            # will warn.
+            codesign --force --deep --sign - Jondo.app
+          }
+          bundle aarch64 target/aarch64-apple-darwin/release/jondo
+          ditto -c -k --keepParent Jondo.app jondo-macos-aarch64.zip
+          bundle x86_64 target/x86_64-apple-darwin/release/jondo
+          ditto -c -k --keepParent Jondo.app jondo-macos-x86_64.zip
+          # The disc carries the Apple Silicon build, which is what most Macs
+          # are. An Intel Mac takes the archive beside it.
+          bundle aarch64 target/aarch64-apple-darwin/release/jondo
+          hdiutil create -volname Jondo -srcfolder Jondo.app -ov -format UDZO jondo-macos-arm64.dmg
+      - name: Check the package sizes
+        run: |
+          set -euo pipefail
+          for zip in jondo-macos-*.zip; do
+            size=$(stat -c %s "$zip")
+            echo "${zip}: ${size} bytes (budget ${MACOS_BUDGET})"
+            test "$size" -le "$MACOS_BUDGET"
+          done
+          size=$(stat -c %s jondo-macos-arm64.dmg)
+          echo "dmg: ${size} bytes (budget ${DMG_BUDGET})"
+          test "$size" -le "$DMG_BUDGET"
+        env:
+          MACOS_BUDGET: 26000000
+          DMG_BUDGET: 26000000
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: |
+            jondo-macos-arm64.dmg
+            jondo-macos-*.zip
+          if-no-files-found: error
+
   windows:
     runs-on: windows-latest
     timeout-minutes: 60
@@ -218,7 +308,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: [linux, android, windows]
+    needs: [linux, android, macos, windows]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -238,7 +328,7 @@ jobs:
         run: |
           set -euo pipefail
           cd release
-          sha256sum jondo-*.apk jondo-*.AppImage \
+          sha256sum jondo-*.apk jondo-*.AppImage jondo-macos-*.dmg jondo-macos-*.zip \
             jondo-windows-amd64-installer.exe > SHA256SUMS
           cat SHA256SUMS
       - uses: softprops/action-gh-release@v2
@@ -246,6 +336,8 @@ jobs:
           files: |
             release/jondo-*.apk
             release/jondo-*.AppImage
+            release/jondo-macos-*.dmg
+            release/jondo-macos-*.zip
             release/jondo-windows-amd64-installer.exe
             release/SHA256SUMS
           fail_on_unmatched_files: true

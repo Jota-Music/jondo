@@ -40,11 +40,14 @@ jobs:
       - name: Test
         run: cargo test --all-targets
 
-  # The other desktop target the release ships for, checked on every push: a
+  # The other desktop targets the release ships for, checked on every push: a
   # change that only compiles on Linux stays invisible until a tag otherwise.
-  # macOS has no runner available for this repository, so it is not gated here.
   platforms:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5

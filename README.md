@@ -177,13 +177,15 @@ cargo test --all-targets
 |---|---|
 | Linux | Primary target; the release publishes an `.AppImage` for 64-bit desktop processors. |
 | Android | Built from `android/` (a GPUI mobile activity) and published as one APK per processor. |
-| macOS | Builds from the same crate, but no runner is available for this repository yet, so the release does not publish a package for it. |
+| macOS | The release publishes an `.app` per processor and a `.dmg` for Apple Silicon. |
 | Windows | The release publishes the NSIS installer. |
 
 The release pipeline publishes a package per processor — `jondo-arm64-v8a.apk`,
-`jondo-x86_64.apk`, `jondo-x86_64.AppImage` — plus the Windows installer and a
-`SHA256SUMS` next to them; the updater picks the package its processor runs and
-verifies the checksum before installing.
+`jondo-x86_64.apk`, `jondo-x86_64.AppImage`, `jondo-macos-aarch64.zip`,
+`jondo-macos-x86_64.zip` — plus `jondo-macos-arm64.dmg`, the Windows installer
+and a `SHA256SUMS` next to them; the updater picks the package its processor
+runs and verifies the checksum before installing. An Intel Mac takes
+`jondo-macos-x86_64.zip`; the `.dmg` is the Apple Silicon build.
 
 ## Data
 
@@ -305,7 +307,7 @@ src/
   `android/keystore.properties`. The release build refuses to run without them.
 - CI (`.github/workflows/ci.yml`) checks format, clippy, tests and the Android
   build. Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml` and
-  publishes a package per processor, the Windows installer and
+  publishes a package per processor, the `.dmg`, the Windows installer and
   `SHA256SUMS`. Every artifact has a size budget, so a dependency that
   quietly adds megabytes fails the release instead of reaching every machine.
 - Build with `JONDO_REPO=Jota-Music/jondo` so the release check points at this
