@@ -42,6 +42,13 @@ jobs:
           sed -i "s/^version = \".*\"/version = \"${version}\"/" Cargo.toml
       - name: Build
         run: cargo build --release
+      - name: Drop the unwinding tables
+        # With `panic = "abort"` nothing unwinds, and the tables that would walk
+        # a frame are 2.8 MB of the binary. `strip` keeps them; objcopy takes
+        # them out.
+        run: |
+          objcopy --remove-section=.eh_frame --remove-section=.eh_frame_hdr \
+            target/release/jondo
       - name: Package AppImage
         run: |
           set -euo pipefail

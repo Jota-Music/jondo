@@ -95,6 +95,14 @@ done
 echo "==> compiling the library (${CARGO_PROFILE}, ${ABIS[*]})"
 cargo ndk "${NDK_ARGS[@]}" -P 26 -o "$JNI_LIBS" "${CARGO_ARGS[@]}"
 
+# `panic = "abort"` never unwinds, so the frame tables are dead weight in the
+# library; the NDK's objcopy takes them out before Gradle packages it.
+OBJCOPY="$(ls "$ANDROID_NDK_HOME"/toolchains/llvm/prebuilt/*/bin/llvm-objcopy | head -1)"
+for abi in "${ABIS[@]}"; do
+    "$OBJCOPY" --remove-section=.eh_frame --remove-section=.eh_frame_hdr \
+        "$JNI_LIBS/$abi/libjondo.so"
+done
+
 echo "==> packaging ${VERSION}"
 ./android/gradlew -p android "$GRADLE_TASK" -Pversion="$VERSION" -Pabis="$(IFS=,; echo "${ABIS[*]}")"
 
