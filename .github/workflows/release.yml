@@ -225,11 +225,11 @@ jobs:
         run: |
           set -euo pipefail
           for zip in jondo-macos-*.zip; do
-            size=$(stat -c %s "$zip")
+            size=$(wc -c < "$zip" | tr -d ' ')
             echo "${zip}: ${size} bytes (budget ${MACOS_BUDGET})"
             test "$size" -le "$MACOS_BUDGET"
           done
-          size=$(stat -c %s jondo-macos-arm64.dmg)
+          size=$(wc -c < jondo-macos-arm64.dmg | tr -d ' ')
           echo "dmg: ${size} bytes (budget ${DMG_BUDGET})"
           test "$size" -le "$DMG_BUDGET"
         env:
