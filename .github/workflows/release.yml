@@ -79,7 +79,12 @@ jobs:
           curl -fsSL -o appimagetool \
             "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${arch}.AppImage"
           chmod +x appimagetool
+          # squashfs' own default is zstd level 15 over 128K blocks; a higher
+          # level and megabyte blocks only make the image smaller, since the
+          # decompressor reads the same bytes either way.
           ARCH="$arch" ./appimagetool --appimage-extract-and-run \
+            --mksquashfs-opt -b --mksquashfs-opt 1M \
+            --mksquashfs-opt -Xcompression-level --mksquashfs-opt 22 \
             "$appdir" "jondo-${arch}.AppImage"
       - name: Check the AppImage size
         # Everyone downloads this file to run the app, so a change that grows
@@ -89,7 +94,7 @@ jobs:
           echo "appimage: ${size} bytes (budget ${APPIMAGE_BUDGET})"
           test "$size" -le "$APPIMAGE_BUDGET"
         env:
-          APPIMAGE_BUDGET: 46000000
+          APPIMAGE_BUDGET: 15000000
       - uses: actions/upload-artifact@v4
         with:
           name: linux
@@ -272,6 +277,7 @@ jobs:
           cp target/release/jondo.exe jondo-windows-amd64.exe
           cat > installer.nsi <<'NSI'
           Unicode True
+          SetCompressor /SOLID lzma
           Name "Jondo"
           OutFile "jondo-windows-amd64-installer.exe"
           InstallDir "$LOCALAPPDATA\Programs\Jondo"
