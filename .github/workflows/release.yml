@@ -18,14 +18,10 @@ env:
 
 jobs:
   linux:
-    strategy:
-      matrix:
-        include:
-          - runner: ubuntu-24.04
-            arch: x86_64
-          - runner: ubuntu-24.04-arm64
-            arch: aarch64
-    runs-on: ${{ matrix.runner }}
+    # The aarch64 leg waits forever: the org has no arm64 runner, so the job
+    # holds the whole release in the queue. One AppImage, the one every desktop
+    # this ships to runs.
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
@@ -89,7 +85,7 @@ jobs:
           APPIMAGE_BUDGET: 46000000
       - uses: actions/upload-artifact@v4
         with:
-          name: linux-${{ matrix.arch }}
+          name: linux
           path: jondo-*.AppImage
           if-no-files-found: error
 

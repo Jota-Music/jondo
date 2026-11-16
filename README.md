@@ -175,15 +175,15 @@ cargo test --all-targets
 
 | Platform | Status |
 |---|---|
-| Linux | Primary target; the release publishes an `.AppImage` per processor. |
+| Linux | Primary target; the release publishes an `.AppImage` for 64-bit desktop processors. |
 | Android | Built from `android/` (a GPUI mobile activity) and published as one APK per processor. |
 | macOS | Builds from the same crate, but no runner is available for this repository yet, so the release does not publish a package for it. |
 | Windows | The release publishes the NSIS installer. |
 
 The release pipeline publishes a package per processor — `jondo-arm64-v8a.apk`,
-`jondo-x86_64.apk`, `jondo-x86_64.AppImage`, `jondo-aarch64.AppImage` — plus the
-Windows installer and a `SHA256SUMS` next to them; the updater picks the package
-its processor runs and verifies the checksum before installing.
+`jondo-x86_64.apk`, `jondo-x86_64.AppImage` — plus the Windows installer and a
+`SHA256SUMS` next to them; the updater picks the package its processor runs and
+verifies the checksum before installing.
 
 ## Data
 
